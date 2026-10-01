@@ -1,0 +1,1174 @@
+import {
+  Component, StrictMode, createContext, useCallback, useContext, useEffect, useRef, useState,
+} from 'react';
+import { createRoot } from 'react-dom/client';
+import {
+  BrowserRouter, Link, NavLink, Outlet, Route, Routes, useLocation, useNavigate, useParams, useSearchParams,
+} from 'react-router';
+import DOMPurify from 'dompurify';
+import './style.css';
+
+const date = (s) => (s ? new Date(s).toLocaleDateString() : '');
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const dateTime = (s) => (s ? new Date(s).toLocaleString() : 'never');
+const slackTime = (ts) => new Date(Number(ts) * 1000).toLocaleString();
+
+// JSON calls to our own /api routes (server.js); throws the server's message on failure.
+async function api(path, { method = 'GET', body } = {}) {
+  const r = await fetch(`/api${path}`, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : {},
+    body: body && JSON.stringify(body),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.message ?? `HTTP ${r.status}`);
+  return data;
+}
+
+// Slack connection status + every repo↔channel link, shared by the link buttons, Slack tab and chat panel.
+const SlackContext = createContext({ status: null, links: [], reload: async () => {} });
+
+function useSlackState() {
+  const [state, setState] = useState({ status: null, links: [] });
+  const reload = useCallback(async () => {
+    const [status, links] = await Promise.all([api('/slack/status'), api('/slack/links')]);
+    setState({ status, links });
+  }, []);
+  useEffect(() => {
+    reload().catch(() => {});
+  }, [reload]);
+  return { ...state, reload };
+}
+
+const linksFor = (links, repo) => links.filter((l) => l.repo === repo);
+
+// LLM settings (provider/model, never API keys), shared by the chat panel header and the settings page.
+const LlmContext = createContext({ settings: null, reload: async () => {} });
+
+function useLlmSettings() {
+  const [settings, setSettings] = useState(null);
+  const reload = useCallback(async () => setSettings(await api('/settings')), []);
+  useEffect(() => {
+    reload().catch(() => {});
+  }, [reload]);
+  return { settings, reload };
+}
+
+// Asks GitHub to include `body_html` (rendered Markdown) next to `body`.
+const FULL = 'application/vnd.github.full+json';
+
+const EMPTY = { key: null, data: null, error: null, next: null, busy: false };
+
+// Fetches a GitHub endpoint through our proxy. Arrays get "Load more" via the Link header.
+function useGitHub(path, accept) {
+  const nav = useNavigate();
+  const key = `${accept ?? ''} ${path}`;
+  const [s, set] = useState(EMPTY);
+  const ac = useRef(null); // aborts in-flight requests (incl. "Load more") when path changes or on unmount
+
+  const load = useCallback(async (page, signal) => {
+    // Use only the page number from Link: GitHub's next URLs sometimes use /repositories/:id, which the allowlist rejects.
+    const url = `/api/gh/${path}${page ? `${path.includes('?') ? '&' : '?'}page=${page}` : ''}`;
+    const r = await fetch(url, { signal, headers: accept ? { Accept: accept } : {} });
+    if (r.status === 401) return nav('/');
+    // GitHub labels rendered HTML as "application/vnd.github.html+json", so "json" in the type isn't enough.
+    const type = r.headers.get('content-type') ?? '';
+    const body = type.includes('json') && !/vnd\.github\.(html|raw)/.test(type) ? await r.json() : await r.text();
+    if (signal.aborted) return;
+    if (!r.ok) return set((p) => ({ ...p, key, error: body.message ?? (r.statusText || `HTTP ${r.status}`), busy: false }));
+    const items = body.workflow_runs ?? body; // actions/runs wraps its list in an object
+    const next = r.headers.get('link')?.match(/<([^>]+)>;\s*rel="next"/)?.[1];
+    set((p) => ({
+      key,
+      data: page ? [...p.data, ...items] : items,
+      error: null,
+      next: next && new URL(next).searchParams.get('page'),
+      busy: false,
+    }));
+  }, [key, path, accept, nav]);
+
+  const fail = useCallback(
+    (e) => e.name !== 'AbortError' && set((p) => ({ ...p, key, error: e.message, busy: false })),
+    [key],
+  );
+
+  useEffect(() => {
+    const c = (ac.current = new AbortController());
+    load(null, c.signal).catch(fail);
+    return () => c.abort();
+  }, [load, fail]);
+
+  // State is tagged with the request it belongs to. When the path changes, the component re-renders before the
+  // new fetch finishes; returning the previous path's data then would hand e.g. commits to the pull-request renderer.
+  const cur = s.key === key ? s : EMPTY;
+  const more = cur.next && !cur.busy && (() => {
+    set((p) => ({ ...p, busy: true }));
+    load(cur.next, ac.current.signal).catch(fail);
+  });
+  return { ...cur, more };
+}
+
+// GitHub already renders and sanitizes body_html; DOMPurify is defense in depth since it goes into innerHTML.
+const Markdown = ({ html, empty }) => (html
+  ? <div className="markdown" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }} />
+  : empty ? <p className="muted">{empty}</p> : null);
+
+// Shows a message instead of unmounting the whole app (a blank page) if a page throws while rendering.
+class ErrorBoundary extends Component {
+  state = { error: null };
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="alert" role="alert">
+        <span className="alert-label">something went wrong on this page</span>
+        {this.state.error.message}
+        <button className="link-btn" onClick={() => window.location.reload()}>reload page</button>
+      </div>
+    );
+  }
+}
+
+function Status({ error, data }) {
+  if (error) return <p className="error">{error}</p>;
+  if (!data) return <p className="muted">Loading…</p>;
+  return null;
+}
+
+function List({ path, render, keep, accept, empty = 'Nothing here.' }) {
+  const { data, error, more, busy } = useGitHub(path, accept);
+  if (error || !data) return <Status error={error} data={data} />;
+  const items = keep ? data.filter(keep) : data;
+  return (
+    <>
+      {items.length ? <ul className="list">{items.map(render)}</ul> : <p className="muted">{empty}</p>}
+      {(more || busy) && <button onClick={more || undefined} disabled={busy}>{busy ? 'Loading…' : 'Load more'}</button>}
+    </>
+  );
+}
+
+const Ext = ({ href, children }) => <a href={href} target="_blank" rel="noreferrer">{children}</a>;
+
+const Logo = () => (
+  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2"
+    strokeLinecap="round" aria-hidden="true">
+    <circle cx="6" cy="5" r="2.5" /><circle cx="6" cy="19" r="2.5" /><circle cx="18" cy="8" r="2.5" />
+    <path d="M6 7.5v9M18 10.5c0 4.5-6 3.5-11 6.5" />
+  </svg>
+);
+
+const GitHubMark = () => (
+  <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor" aria-hidden="true">
+    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+  </svg>
+);
+
+const Brand = ({ to }) => <Link to={to} className="brand"><Logo />git-help</Link>;
+
+const HashIcon = () => (
+  <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5"
+    strokeLinecap="round" aria-hidden="true">
+    <path d="M6 2 4.5 14M11.5 2 10 14M2.5 5.5h11.5M2 10.5h11.5" />
+  </svg>
+);
+
+const ArrowUp = () => (
+  <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.75"
+    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" />
+  </svg>
+);
+
+function SlackLinkButton({ repo }) {
+  const { links } = useContext(SlackContext);
+  const [open, setOpen] = useState(false);
+  const mine = linksFor(links, repo);
+  return (
+    <>
+      <button type="button" className={`chip-btn${mine.length ? ' linked' : ''}`} onClick={() => setOpen(true)}
+        aria-label={mine.length ? `Slack channels for ${repo}: ${mine.map((l) => l.name).join(', ')}` : `Link a Slack channel to ${repo}`}>
+        <HashIcon />
+        <span className="chip-label">{mine.length ? mine.map((l) => l.name).join(', ') : 'link slack channel'}</span>
+      </button>
+      {open && <SlackLinkDialog repo={repo} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+function SlackLinkDialog({ repo, onClose }) {
+  const { status, links, reload } = useContext(SlackContext);
+  const ref = useRef(null);
+  const [channels, setChannels] = useState(null);
+  const [q, setQ] = useState('');
+  const [busy, setBusy] = useState(null); // id of the channel being linked/unlinked
+  const [error, setError] = useState(null);
+  const linked = new Set(linksFor(links, repo).map((l) => l.channel_id));
+
+  useEffect(() => {
+    ref.current.showModal();
+    ref.current.querySelector('input')?.focus(); // showModal() focuses the first button ("close") otherwise
+  }, []);
+  useEffect(() => {
+    if (status?.configured) api('/slack/channels').then(setChannels, (e) => setError(e.message));
+  }, [status?.configured]);
+
+  const toggle = async (c) => {
+    setBusy(c.id);
+    setError(null);
+    try {
+      if (linked.has(c.id)) await api(`/slack/links?${new URLSearchParams({ repo, channel_id: c.id })}`, { method: 'DELETE' });
+      else await api('/slack/links', { method: 'POST', body: { repo, channel_id: c.id } });
+      await reload();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const shown = channels?.filter((c) => c.name.includes(q.toLowerCase().replace(/^#/, '')));
+  return (
+    // Clicking the backdrop (the <dialog> itself, outside .dialog-inner) closes it.
+    <dialog ref={ref} className="dialog" onClose={onClose} onClick={(e) => e.target === ref.current && ref.current.close()}>
+      <div className="dialog-inner">
+        <header className="dialog-head">
+          <div>
+            <h2 className="chat-title">link slack channel</h2>
+            <div className="chat-context">{repo}{status?.configured && ` · ${status.team}`}</div>
+          </div>
+          <button type="button" className="link-btn" onClick={() => ref.current.close()}>close</button>
+        </header>
+
+        {status && !status.configured ? (
+          <div className="dialog-body">
+            <p>{status.error ?? "Slack isn't connected yet."}</p>
+            <p className="muted">
+              Create a Slack app from the manifest in the README, install it to your workspace, put its User OAuth
+              Token in <code>.env</code> as <code>SLACK_USER_TOKEN</code>, then restart <code>npm run dev</code>.
+            </p>
+          </div>
+        ) : (
+          <div className="dialog-body">
+            <input type="search" placeholder="Filter channels…" aria-label="Filter channels" value={q}
+              onChange={(e) => setQ(e.target.value)} />
+            {error && <p className="error" role="alert">{error}</p>}
+            {!shown ? <p className="muted">Loading channels…</p>
+              : !shown.length ? <p className="muted">No channels match. You can only link channels you're a member of.</p>
+                : (
+                  <ul className="channel-list">
+                    {shown.map((c) => (
+                      <li key={c.id}>
+                        <button type="button" onClick={() => toggle(c)} disabled={busy !== null} aria-pressed={linked.has(c.id)}>
+                          <span className="channel-name">
+                            #{c.name}{c.is_private && <span className="badge">private</span>}
+                          </span>
+                          <span className="channel-action">
+                            {busy === c.id ? (linked.has(c.id) ? 'unlinking…' : 'linking & syncing…')
+                              : linked.has(c.id) ? 'linked · unlink' : 'link'}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+            <p className="hint">
+              Linking copies the last 90 days of messages and threads into a local file on this machine
+              (<code>.data/</code>). Unlinking deletes that copy.
+            </p>
+          </div>
+        )}
+      </div>
+    </dialog>
+  );
+}
+
+function SlackTab({ repo }) {
+  const { links, reload } = useContext(SlackContext);
+  const mine = linksFor(links, repo);
+  const total = mine.reduce((n, l) => n + l.messages, 0);
+  const [threads, setThreads] = useState(null);
+  const [error, setError] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+  const [index, setIndex] = useState(null);
+
+  const loadIndex = useCallback(() => api(`/index?${new URLSearchParams({ repo })}`).then(setIndex, () => {}), [repo]);
+  useEffect(() => {
+    loadIndex();
+  }, [loadIndex, total]);
+
+  useEffect(() => {
+    if (!mine.length) return;
+    let live = true;
+    api(`/slack/threads?${new URLSearchParams({ repo })}`).then((t) => live && setThreads(t), (e) => live && setError(e.message));
+    return () => { live = false; };
+  }, [repo, total, mine.length]);
+
+  const syncNow = async (full) => {
+    setSyncing(true);
+    setError(null);
+    try {
+      const { index_error } = await api('/slack/sync', { method: 'POST', body: { repo, full } });
+      if (index_error) setError(index_error);
+      await reload();
+      await loadIndex();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const rebuild = async () => {
+    setSyncing(true);
+    setError(null);
+    try {
+      setIndex(await api('/index', { method: 'POST', body: { repo } }));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const indexRow = index && ['search index', index.indexed_at || index.slack
+    ? `${plural(index.github, 'GitHub chunk')} · ${plural(index.slack, 'Slack chunk')} · ${index.model.split(':').slice(1).join(':')}`
+    : 'not built yet: it builds the first time you ask the chat about this repo'];
+
+  return (
+    <>
+      {mine.length ? (
+        <Rows rows={[
+          ...mine.map((l) => [`#${l.name}`, `${plural(l.messages, 'message')} · synced ${dateTime(l.synced_at)}`]),
+          ...(indexRow ? [indexRow] : []),
+        ]} />
+      ) : (
+        <p className="muted">No Slack channel is linked to this repo yet. Link one to see its conversations here.</p>
+      )}
+      {/* The link button keeps the same place in the tree whether or not anything is linked, so the picker
+          dialog it owns stays open after the first link instead of unmounting with the empty state. */}
+      <div className="actions">
+        {mine.length > 0 && (
+          <>
+            <button type="button" onClick={() => syncNow(false)} disabled={syncing}>{syncing ? 'syncing…' : 'sync now'}</button>
+            <button type="button" className="link-btn" onClick={() => syncNow(true)} disabled={syncing}>full resync</button>
+          </>
+        )}
+        <button type="button" className="link-btn" onClick={rebuild} disabled={syncing}>rebuild index</button>
+        <SlackLinkButton repo={repo} />
+      </div>
+      {error && <p className="error" role="alert">{error}</p>}
+      {mine.length > 0 && <SlackThreads threads={threads} />}
+    </>
+  );
+}
+
+function SlackThreads({ threads }) {
+  return (
+    <>
+      <h3>Recent conversations</h3>
+      {!threads ? <p className="muted">Loading…</p>
+        : !threads.length ? <p className="muted">No messages in the last 90 days.</p>
+          : (
+            <ul className="list">
+              {threads.map((t) => (
+                <li key={t.channel_id + t.ts}>
+                  <b>{t.author}</b>
+                  <span className="muted">#{t.channel} · {slackTime(t.ts)} · <Ext href={t.permalink}>open in slack ↗</Ext></span>
+                  <p className="slack-text">{t.text}</p>
+                  {t.replies.length > 0 && (
+                    <details className="replies">
+                      <summary>{plural(t.replies.length, 'reply', 'replies')}</summary>
+                      {t.replies.map((r) => (
+                        <div key={r.ts} className="reply">
+                          <b>{r.author}</b> <span className="muted">{slackTime(r.ts)}</span>
+                          <p className="slack-text">{r.text}</p>
+                        </div>
+                      ))}
+                    </details>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+    </>
+  );
+}
+
+const SUGGESTIONS = {
+  repo: [
+    "What's blocking the open pull requests?",
+    'What decisions were made recently, and why?',
+    'Who is working on what right now?',
+  ],
+  general: [
+    'Which repos have open bugs right now?',
+    'Summarize recent decisions across projects',
+    'What changed in the latest releases?',
+  ],
+};
+
+// POST /api/chat and yield its NDJSON events (status, sources, token, done, error) as they arrive.
+async function* chatStream(body, signal) {
+  const r = await fetch('/api/chat', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal,
+  });
+  if (!r.ok) {
+    const data = await r.json().catch(() => ({}));
+    throw new Error(data.message ?? `HTTP ${r.status}`);
+  }
+  const reader = r.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buf = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += value;
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i);
+      buf = buf.slice(i + 1);
+      if (line.trim()) yield JSON.parse(line);
+    }
+  }
+  if (buf.trim()) yield JSON.parse(buf);
+}
+
+const CITATION = /(\[\d+(?:\s*,\s*\d+)*\])/g;
+const citationNumbers = (part) => part.match(/^\[([\d,\s]+)\]$/)?.[1].split(',').map((n) => Number(n.trim()));
+
+// Answer text with its [1] / [2, 3] citations turned into links to the sources (unknown numbers stay plain text).
+function AnswerText({ text, sources = [] }) {
+  return (
+    <p>
+      {text.split(CITATION).map((part, i) => {
+        const nums = citationNumbers(part);
+        if (!nums || !nums.every((n) => sources[n - 1])) return part;
+        return (
+          <span key={i} className="cites">
+            {nums.map((n) => (
+              <a key={n} className="cite" href={sources[n - 1].url} target="_blank" rel="noreferrer" title={sources[n - 1].title}>[{n}]</a>
+            ))}
+          </span>
+        );
+      })}
+    </p>
+  );
+}
+
+// Only the sources the answer actually cites; small talk cites none, so it shows no list.
+function SourceList({ text, sources }) {
+  const used = new Set(text.split(CITATION).flatMap((part) => citationNumbers(part) ?? []));
+  const cited = sources.filter((s) => used.has(s.n));
+  if (!cited.length) return null;
+  return (
+    <details className="sources">
+      <summary>{plural(cited.length, 'source')}</summary>
+      <ol>
+        {cited.map((s) => (
+          <li key={s.n} value={s.n}>
+            <span className="badge">{s.source}</span> <Ext href={s.url}>{s.title}</Ext>
+          </li>
+        ))}
+      </ol>
+    </details>
+  );
+}
+
+const StopIcon = () => (
+  <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="10" height="10" rx="1.5" /></svg>
+);
+
+// Chat over the repo's (or all repos') indexed GitHub data and linked Slack channels. See rag.js.
+function ChatPanel({ repo, open, onClose }) {
+  const [threads, setThreads] = useState({}); // one conversation per repo (or "*" for the repo list)
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const stop = useRef(null);
+  const log = useRef(null);
+  const input = useRef(null);
+  const key = repo ?? '*';
+  const messages = threads[key] ?? [];
+  const subject = repo ? repo.split('/')[1] : 'your repos';
+  const { links } = useContext(SlackContext);
+  const { settings } = useContext(LlmContext);
+  const linked = repo ? linksFor(links, repo) : links;
+  const slackStatus = !linked.length ? 'slack not linked'
+    : repo ? `${linked.map((l) => `#${l.name}`).join(', ')} · ${plural(linked.reduce((n, l) => n + l.messages, 0), 'message')}`
+      : `${plural(new Set(links.map((l) => l.channel_id)).size, 'channel')} linked`;
+  const last = messages.at(-1);
+
+  useEffect(() => {
+    log.current?.scrollTo({ top: log.current.scrollHeight });
+  }, [messages.length, last?.text, last?.status]);
+
+  const send = async (e) => {
+    e?.preventDefault();
+    const q = text.trim();
+    if (!q || busy) return;
+    const k = key; // the user may switch repos while this answer streams
+    const history = [...messages.filter((m) => m.text.trim() && !m.error), { role: 'user', text: q }];
+    const update = (fn) => setThreads((t) => {
+      const list = [...(t[k] ?? [])];
+      list[list.length - 1] = fn(list.at(-1));
+      return { ...t, [k]: list };
+    });
+    setThreads((t) => ({ ...t, [k]: [...(t[k] ?? []), { role: 'user', text: q }, { role: 'assistant', text: '', pending: true }] }));
+    setText('');
+    setBusy(true);
+    const ac = new AbortController();
+    stop.current = ac;
+    try {
+      const body = { repo, messages: history.map((m) => ({ role: m.role, content: m.text })) };
+      for await (const ev of chatStream(body, ac.signal)) {
+        if (ev.type === 'status') update((m) => ({ ...m, status: ev.text }));
+        else if (ev.type === 'sources') update((m) => ({ ...m, sources: ev.sources, status: null }));
+        else if (ev.type === 'token') update((m) => ({ ...m, text: m.text + ev.text }));
+        else if (ev.type === 'error') update((m) => ({ ...m, error: ev.message }));
+      }
+    } catch (err) {
+      if (err.name !== 'AbortError') update((m) => ({ ...m, error: err.message }));
+    } finally {
+      update((m) => ({ ...m, pending: false, status: null, stopped: ac.signal.aborted }));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <aside className="chat" data-open={open} aria-label="Chat">
+      <header className="chat-head">
+        <div>
+          <div className="chat-title">chat</div>
+          <div className="chat-context">
+            {repo ?? 'all repositories'} · <span className={`dot${linked.length ? ' on' : ''}`} aria-hidden="true" />{slackStatus}
+          </div>
+          {settings && (
+            <div className="chat-context">
+              <Link to="/settings" className="model-link">
+                {settings.chat.model} · {settings.chat.provider === 'ollama' ? 'local' : settings.chat.provider}
+              </Link>
+            </div>
+          )}
+        </div>
+        <div className="chat-head-actions">
+          {messages.length > 0 && !busy && (
+            <button type="button" className="link-btn" onClick={() => setThreads((t) => ({ ...t, [key]: [] }))}>new chat</button>
+          )}
+          <button type="button" className="link-btn chat-close" onClick={onClose}>close</button>
+        </div>
+      </header>
+
+      <div className="chat-log" ref={log} role="log" aria-live="polite">
+        {messages.length === 0 ? (
+          <div className="chat-empty">
+            <h2>Ask about {subject}</h2>
+            <p>
+              {repo
+                ? "Answers come from this repo's issues, pull requests and README, plus its linked Slack channels, with links to every source."
+                : "Answers come from every repo you've chatted about and all linked Slack channels, with links to every source."}
+            </p>
+            <div className="suggestions">
+              {SUGGESTIONS[repo ? 'repo' : 'general'].map((s) => (
+                <button key={s} type="button" onClick={() => { setText(s); input.current?.focus(); }}>{s}</button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          messages.map((m, i) => (m.role === 'user' ? (
+            <div key={i} className="msg msg-user"><p>{m.text}</p></div>
+          ) : (
+            <div key={i} className="msg msg-assistant">
+              <span className="msg-author">
+                git-help{m.pending && !m.text && <span className="typing"> · {m.status ?? 'searching…'}</span>}
+              </span>
+              {m.text && <AnswerText text={m.text} sources={m.sources} />}
+              {m.stopped && <p className="muted">stopped</p>}
+              {m.error && <p className="error" role="alert">{m.error}</p>}
+              {!m.pending && m.sources?.length > 0 && <SourceList text={m.text} sources={m.sources} />}
+            </div>
+          )))
+        )}
+      </div>
+
+      <form className="composer" onSubmit={send}>
+        <div className="composer-box">
+          <textarea ref={input} rows={1} value={text} placeholder={`Ask about ${subject}…`} aria-label="Message"
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) send(e); }} />
+          {busy ? (
+            <button type="button" className="send" onClick={() => stop.current?.abort()} aria-label="Stop"><StopIcon /></button>
+          ) : (
+            <button type="submit" className="send" disabled={!text.trim()} aria-label="Send"><ArrowUp /></button>
+          )}
+        </div>
+        <p className="composer-hint">enter to send · shift+enter for a new line</p>
+      </form>
+    </aside>
+  );
+}
+
+const Section = ({ title, children }) => (
+  <section className="section"><h2 className="section-title">{title}</h2>{children}</section>
+);
+
+const Rows = ({ rows }) => (
+  <dl className="rows">
+    {rows.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}
+  </dl>
+);
+
+function ThemeToggle() {
+  const system = () => (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  const [theme, setTheme] = useState(() => document.documentElement.dataset.theme ?? system());
+  const next = theme === 'dark' ? 'light' : 'dark';
+  const flip = () => {
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem('theme', next); } catch {}
+    setTheme(next);
+  };
+  return <button className="link-btn" onClick={flip} aria-label={`Switch to ${next} theme`}>{next}</button>;
+}
+
+const Footer = () => (
+  <footer className="container">
+    <div className="footer">
+      <span>git-help · read-only · MIT</span>
+      <ThemeToggle />
+    </div>
+  </footer>
+);
+
+const SIGN_IN_ERRORS = {
+  access_denied: 'You cancelled the request on GitHub. Nothing was shared.',
+  state_mismatch: 'That sign-in link expired. Please try again.',
+  bad_verification_code: 'The sign-in code expired. Please try again.',
+  incorrect_client_credentials: 'The OAuth client ID or secret in .env is wrong. See the README.',
+  redirect_uri_mismatch: 'The OAuth App callback URL must be http://localhost:5173/auth/callback.',
+};
+
+function Home() {
+  const nav = useNavigate();
+  const [params] = useSearchParams();
+  const error = params.get('error');
+  useEffect(() => {
+    fetch('/api/gh/user').then((r) => r.ok && nav('/repos')).catch(() => {});
+  }, [nav]);
+  return (
+    <div className="page">
+      <header className="topbar container">
+        <Brand to="/" />
+        <nav className="nav">
+          <Ext href="https://github.com/settings/applications">manage access ↗</Ext>
+        </nav>
+      </header>
+
+      <main className="container">
+        <section className="hero">
+          <h1>Your GitHub, in one quiet place.</h1>
+          <p className="kicker">repos · pull requests · issues · branches</p>
+          <p className="lead">
+            Git-Help pulls everything you need while building a project out of your GitHub account into one read-only
+            dashboard. Sign in once and browse it all, without tab-hopping across github.com.
+          </p>
+
+          {error && (
+            <div className="alert" role="alert">
+              <span className="alert-label">sign-in failed</span>
+              {SIGN_IN_ERRORS[error] ?? error}
+            </div>
+          )}
+
+          <div className="cta">
+            <a className="btn-primary" href="/auth/login"><GitHubMark />Continue with GitHub</a>
+            <span className="hint">read-only · your password never touches this app</span>
+          </div>
+        </section>
+
+        <Section title="what you get">
+          <Rows rows={[
+            ['repositories', 'Every repo you own, collaborate on, or reach through an organization.'],
+            ['pull requests', 'Open and closed PRs with their descriptions, changed files, reviews and comments.'],
+            ['issues', 'Labels, assignees and full comment threads.'],
+            ['branches', 'Every branch, with protected branches marked.'],
+            ['commits & ci', 'Recent commits, GitHub Actions runs and releases.'],
+          ]} />
+        </Section>
+
+        <Section title="how sign-in works">
+          <Rows rows={[
+            ['01 · authorize', 'You approve access on github.com. Git-Help never asks for or sees your password.'],
+            ['02 · encrypt', 'Your access token is encrypted into an HttpOnly cookie on this machine.'],
+            ['03 · read', 'Requests only read data, and go straight to api.github.com. Revoke access any time.'],
+          ]} />
+        </Section>
+      </main>
+
+      <Footer />
+    </div>
+  );
+}
+
+function Layout() {
+  const nav = useNavigate();
+  const { pathname } = useLocation();
+  const { data: me } = useGitHub('user');
+  const slack = useSlackState();
+  const llm = useLlmSettings();
+  const [chatOpen, setChatOpen] = useState(false); // only matters on narrow screens; wide screens always show it
+  const repo = pathname.match(/^\/repos\/([^/]+\/[^/]+)/)?.[1] ?? null;
+  const logout = async () => {
+    await fetch('/auth/logout', { method: 'POST' });
+    nav('/');
+  };
+  return (
+    <SlackContext.Provider value={slack}>
+    <LlmContext.Provider value={llm}>
+      <div className="app">
+        <header className="topbar app-topbar">
+          <Brand to="/repos" />
+          <nav className="nav">
+            <NavLink to="/repos">repos</NavLink>
+          <NavLink to="/settings">settings</NavLink>
+            {me && (
+              <span className="me">
+                <img src={me.avatar_url} alt="" width="20" height="20" />
+                {me.login}
+              </span>
+            )}
+            <button className="link-btn" onClick={logout}>sign out</button>
+          </nav>
+        </header>
+        <div className="shell">
+          <div className="shell-main">
+            <main className="container">
+              <ErrorBoundary key={pathname}><Outlet /></ErrorBoundary>
+            </main>
+            <Footer />
+          </div>
+          <ChatPanel repo={repo} open={chatOpen} onClose={() => setChatOpen(false)} />
+        </div>
+        {!chatOpen && (
+          <button type="button" className="chat-fab" onClick={() => setChatOpen(true)}>
+            ask{repo ? ` about ${repo.split('/')[1]}` : ''}
+          </button>
+        )}
+      </div>
+    </LlmContext.Provider>
+    </SlackContext.Provider>
+  );
+}
+
+const PROVIDER_NAMES = { ollama: 'Ollama (local)', anthropic: 'Anthropic (Claude)', openai: 'OpenAI-compatible API' };
+
+const toForm = (s) => ({
+  chat: { ...s.chat },
+  embed: { ...s.embed },
+  ollamaUrl: s.ollama.url,
+  openaiUrl: s.openai.url,
+  openaiKey: '',
+  anthropicKey: '',
+  clear: {}, // keys to remove on save
+});
+
+// An empty key field keeps the saved key; "remove" sends null.
+const toPatch = (f) => ({
+  chat: f.chat,
+  embed: f.embed,
+  ollama: { url: f.ollamaUrl },
+  openai: { url: f.openaiUrl, key: f.clear.openai ? null : f.openaiKey || undefined },
+  anthropic: { key: f.clear.anthropic ? null : f.anthropicKey || undefined },
+});
+
+function KeyField({ label, id, state, value, cleared, onChange, onClear }) {
+  const hint = cleared ? 'will be removed on save' : state === 'saved' ? 'saved: leave blank to keep it'
+    : state === 'env' ? 'from .env: enter one to override' : 'not set';
+  return (
+    <div className="field">
+      <label htmlFor={id}>{label}</label>
+      <div className="field-row">
+        <input id={id} type="password" autoComplete="off" value={value} placeholder={hint}
+          onChange={(e) => onChange(e.target.value)} />
+        {state === 'saved' && !cleared && <button type="button" className="link-btn" onClick={onClear}>remove</button>}
+      </div>
+    </div>
+  );
+}
+
+function ModelField({ id, label, value, options, onChange, hint }) {
+  return (
+    <div className="field">
+      <label htmlFor={id}>{label}</label>
+      <input id={id} list={`${id}-list`} value={value} onChange={(e) => onChange(e.target.value)} spellCheck={false} />
+      <datalist id={`${id}-list`}>{options?.map((m) => <option key={m} value={m} />)}</datalist>
+      {hint && <p className="hint">{hint}</p>}
+    </div>
+  );
+}
+
+function SettingsPage() {
+  const { settings, reload } = useContext(LlmContext);
+  const [form, setForm] = useState(null);
+  const [models, setModels] = useState({}); // provider -> model ids, or an error message
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const [test, setTest] = useState(null);
+
+  useEffect(() => {
+    if (settings && !form) setForm(toForm(settings));
+  }, [settings, form]);
+
+  const loadModels = useCallback((provider) => {
+    api(`/settings/models?provider=${provider}`).then(
+      (list) => setModels((m) => ({ ...m, [provider]: list })),
+      (e) => setModels((m) => ({ ...m, [provider]: e.message })),
+    );
+  }, []);
+  // Lists come from the saved connection settings, so reload them after each save.
+  useEffect(() => {
+    if (!settings) return;
+    for (const p of new Set([settings.chat.provider, settings.embed.provider])) loadModels(p);
+  }, [settings, loadModels]);
+
+  if (!settings || !form) return <p className="muted">Loading…</p>;
+  const set = (patch) => setForm((f) => ({ ...f, ...patch }));
+  const setProvider = (kind, provider) => set({ [kind]: { provider, model: settings.defaults[kind][provider] ?? '' } });
+  const modelList = (provider) => (Array.isArray(models[provider]) ? models[provider] : undefined);
+  const listHint = (provider) => (typeof models[provider] === 'string' ? `Couldn't list models: ${models[provider]}` : null);
+  const cloud = [form.chat.provider, form.embed.provider].filter((p) => p !== 'ollama');
+
+  const save = async (andTest) => {
+    setSaving(true);
+    setNotice(null);
+    setTest(null);
+    try {
+      const next = await api('/settings', { method: 'PUT', body: toPatch(form) });
+      setForm(toForm(next));
+      await reload();
+      setNotice({ ok: true, text: 'Saved.' });
+      if (andTest) setTest(await api('/settings/test', { method: 'POST' }));
+    } catch (e) {
+      setNotice({ ok: false, text: e.message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form className="settings" onSubmit={(e) => { e.preventDefault(); save(false); }}>
+      <h1>Settings</h1>
+      <p className="kicker">which models answer questions in the chat panel</p>
+
+      <Section title="chat model">
+        <div className="field">
+          <label htmlFor="chat-provider">Provider</label>
+          <select id="chat-provider" value={form.chat.provider} onChange={(e) => setProvider('chat', e.target.value)}>
+            {['ollama', 'anthropic', 'openai'].map((p) => <option key={p} value={p}>{PROVIDER_NAMES[p]}</option>)}
+          </select>
+        </div>
+        <ModelField id="chat-model" label="Model" value={form.chat.model} options={modelList(form.chat.provider)}
+          onChange={(model) => set({ chat: { ...form.chat, model } })} hint={listHint(form.chat.provider)} />
+      </Section>
+
+      <Section title="embedding model">
+        <div className="field">
+          <label htmlFor="embed-provider">Provider</label>
+          <select id="embed-provider" value={form.embed.provider} onChange={(e) => setProvider('embed', e.target.value)}>
+            {['ollama', 'openai'].map((p) => <option key={p} value={p}>{PROVIDER_NAMES[p]}</option>)}
+          </select>
+        </div>
+        <ModelField id="embed-model" label="Model" value={form.embed.model} options={modelList(form.embed.provider)}
+          onChange={(model) => set({ embed: { ...form.embed, model } })}
+          hint={listHint(form.embed.provider) ?? 'Changing this re-embeds everything the next time you ask a question. Anthropic has no embedding models.'} />
+      </Section>
+
+      <Section title="connections">
+        <div className="field">
+          <label htmlFor="ollama-url">Ollama URL</label>
+          <input id="ollama-url" type="url" value={form.ollamaUrl} onChange={(e) => set({ ollamaUrl: e.target.value })} />
+        </div>
+        <KeyField label="Anthropic API key" id="anthropic-key" state={settings.anthropic.key} value={form.anthropicKey}
+          cleared={form.clear.anthropic} onChange={(v) => set({ anthropicKey: v })}
+          onClear={() => set({ clear: { ...form.clear, anthropic: true } })} />
+        <div className="field">
+          <label htmlFor="openai-url">OpenAI-compatible base URL</label>
+          <input id="openai-url" type="url" value={form.openaiUrl} onChange={(e) => set({ openaiUrl: e.target.value })} />
+          <p className="hint">OpenAI, Groq, OpenRouter, Together, LM Studio, vLLM… anything that speaks the OpenAI API.</p>
+        </div>
+        <KeyField label="OpenAI-compatible API key" id="openai-key" state={settings.openai.key} value={form.openaiKey}
+          cleared={form.clear.openai} onChange={(v) => set({ openaiKey: v })}
+          onClear={() => set({ clear: { ...form.clear, openai: true } })} />
+        <p className="hint">Keys are stored encrypted on this machine and never sent back to the browser.</p>
+      </Section>
+
+      {cloud.length > 0 && (
+        <p className="alert" role="note">
+          <span className="alert-label">privacy</span>
+          Questions, and the Slack messages and GitHub text that match them, will be sent to {[...new Set(cloud)].map((p) => PROVIDER_NAMES[p]).join(' and ')}.
+        </p>
+      )}
+
+      <div className="actions">
+        <button type="submit" disabled={saving}>{saving ? 'saving…' : 'save'}</button>
+        <button type="button" className="link-btn" disabled={saving} onClick={() => save(true)}>save & test connection</button>
+      </div>
+      {notice && <p className={notice.ok ? 'muted' : 'error'} role="status">{notice.text}</p>}
+      {test && (
+        <Rows rows={[
+          ['chat', `${test.chat.ok ? '✓' : '✗'} ${test.chat.detail}`],
+          ['embeddings', `${test.embed.ok ? '✓' : '✗'} ${test.embed.detail}`],
+        ]} />
+      )}
+    </form>
+  );
+}
+
+function Repos() {
+  const { data, error, more } = useGitHub(
+    'user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member',
+  );
+  const [q, setQ] = useState('');
+  if (error || !data) return <Status error={error} data={data} />;
+  const shown = data.filter((r) => r.full_name.toLowerCase().includes(q.toLowerCase()));
+  return (
+    <>
+      <h1>Repositories</h1>
+      <p className="kicker">{data.length} loaded · recently updated first</p>
+      <input type="search" placeholder="Filter repositories…" aria-label="Filter repositories"
+        value={q} onChange={(e) => setQ(e.target.value)} />
+      <ul className="list">
+        {shown.map((r) => (
+          <li key={r.id} className="repo-row">
+            <div>
+              <Link to={`/repos/${r.full_name}`} className="title">{r.full_name}</Link>
+              {r.private && <span className="badge">private</span>}
+              {r.fork && <span className="badge">fork</span>}
+              {r.description && <p className="desc">{r.description}</p>}
+              <span className="muted">
+                {[r.language, `★ ${r.stargazers_count}`, `updated ${date(r.pushed_at)}`].filter(Boolean).join(' · ')}
+              </span>
+            </div>
+            <SlackLinkButton repo={r.full_name} />
+          </li>
+        ))}
+      </ul>
+      {more && <button onClick={more}>Load more</button>}
+    </>
+  );
+}
+
+const TABS = {
+  overview: 'Overview',
+  branches: 'Branches',
+  pulls: 'Pull requests',
+  issues: 'Issues',
+  slack: 'Slack',
+  commits: 'Commits',
+  actions: 'Actions',
+  releases: 'Releases',
+  contributors: 'Contributors',
+};
+
+function Overview({ base }) {
+  const { data: info, error } = useGitHub(base);
+  const { data: langs } = useGitHub(`${base}/languages`);
+  const { data: readme, error: noReadme } = useGitHub(`${base}/readme`, 'application/vnd.github.html+json');
+  if (error || !info) return <Status error={error} data={info} />;
+  return (
+    <>
+      {info.description && <p>{info.description}</p>}
+      <p className="muted">
+        {info.visibility} · default branch <code>{info.default_branch}</code> · ★ {info.stargazers_count} ·{' '}
+        {info.forks_count} forks · {info.open_issues_count} open issues + PRs
+        {langs && Object.keys(langs).length > 0 && ` · ${Object.keys(langs).join(', ')}`}
+      </p>
+      <h3>README</h3>
+      {noReadme ? <p className="muted">No README.</p>
+        : readme ? <Markdown html={readme} /> : <p className="muted">Loading…</p>}
+    </>
+  );
+}
+
+function Repo() {
+  const { owner, repo, tab = 'overview' } = useParams();
+  const [params, setParams] = useSearchParams();
+  const state = params.get('state') ?? 'open';
+  const base = `repos/${owner}/${repo}`;
+  const to = (p) => `/repos/${owner}/${repo}/${p}`;
+
+  const body = {
+    overview: () => <Overview base={base} />,
+    branches: () => (
+      <List path={`${base}/branches?per_page=100`} render={(b) => (
+        <li key={b.name}><code>{b.name}</code>{b.protected && <span className="badge">protected</span>}</li>
+      )} />
+    ),
+    pulls: () => (
+      <List path={`${base}/pulls?state=${state}&per_page=50`} empty={`No ${state === 'all' ? '' : `${state} `}pull requests.`} render={(p) => (
+        <li key={p.id}>
+          <Link to={to(`pulls/${p.number}`)}>#{p.number} {p.title}</Link>
+          {p.draft && <span className="badge">draft</span>}
+          {p.merged_at ? <span className="badge merged">merged</span> : p.state === 'closed' && <span className="badge">closed</span>}
+          <span className="muted">{p.user?.login} · {p.head.ref} → {p.base.ref} · {date(p.created_at)}</span>
+        </li>
+      )} />
+    ),
+    issues: () => (
+      // GitHub's issues endpoint also returns pull requests; hide them here.
+      <List path={`${base}/issues?state=${state}&per_page=50`} keep={(i) => !i.pull_request}
+        empty={`No ${state === 'all' ? '' : `${state} `}issues.`} render={(i) => (
+        <li key={i.id}>
+          <Link to={to(`issues/${i.number}`)}>#{i.number} {i.title}</Link>
+          {i.state === 'closed' && <span className="badge">{i.state_reason === 'not_planned' ? 'not planned' : 'closed'}</span>}
+          {i.labels.map((l) => <span key={l.id} className="badge">{l.name}</span>)}
+          <span className="muted">
+            {i.user?.login} · {date(i.created_at)} · {plural(i.comments, 'comment')}
+            {i.assignees.length > 0 && ` · assigned to ${i.assignees.map((a) => a.login).join(', ')}`}
+          </span>
+        </li>
+      )} />
+    ),
+    commits: () => (
+      <List path={`${base}/commits?per_page=50`} render={(c) => (
+        <li key={c.sha}>
+          <Ext href={c.html_url}><code>{c.sha.slice(0, 7)}</code></Ext> {c.commit.message.split('\n')[0]}
+          <span className="muted">{c.author?.login ?? c.commit.author.name} · {date(c.commit.author.date)}</span>
+        </li>
+      )} />
+    ),
+    actions: () => (
+      <List path={`${base}/actions/runs?per_page=30`} render={(r) => (
+        <li key={r.id}>
+          <Ext href={r.html_url}>{r.display_title || r.name}</Ext>
+          <span className="badge">{r.conclusion ?? r.status}</span>
+          <span className="muted">{r.name} · {r.head_branch} · {r.event} · {date(r.created_at)}</span>
+        </li>
+      )} />
+    ),
+    releases: () => (
+      <List path={`${base}/releases?per_page=30`} render={(r) => (
+        <li key={r.id}>
+          <Ext href={r.html_url}>{r.name || r.tag_name}</Ext>
+          {r.prerelease && <span className="badge">pre-release</span>}
+          {r.draft && <span className="badge">draft</span>}
+          <span className="muted"><code>{r.tag_name}</code> · {date(r.published_at)}</span>
+        </li>
+      )} />
+    ),
+    slack: () => <SlackTab repo={`${owner}/${repo}`} />,
+    contributors: () => (
+      <List path={`${base}/contributors?per_page=100`} render={(c) => (
+        <li key={c.id ?? c.login}>
+          <img src={c.avatar_url} alt="" width="20" height="20" /> {c.login}
+          <span className="muted">{plural(c.contributions, 'commit')}</span>
+        </li>
+      )} />
+    ),
+  }[tab];
+
+  return (
+    <>
+      <div className="repo-head">
+        <div>
+          <h1><Link to="/repos" className="crumb">{owner}</Link> / {repo}</h1>
+          <p className="kicker"><Ext href={`https://github.com/${owner}/${repo}`}>view on github ↗</Ext></p>
+        </div>
+        <SlackLinkButton repo={`${owner}/${repo}`} />
+      </div>
+      <nav className="tabs">
+        {Object.entries(TABS).map(([k, label]) => (
+          <Link key={k} to={to(k)} aria-current={k === tab ? 'page' : undefined}>{label}</Link>
+        ))}
+      </nav>
+      {(tab === 'pulls' || tab === 'issues') && (
+        <div className="toggle">
+          {['open', 'closed', 'all'].map((s) => (
+            <button key={s} aria-pressed={s === state} onClick={() => setParams({ state: s })}>{s}</button>
+          ))}
+        </div>
+      )}
+      {body ? body() : <p className="error">Unknown tab.</p>}
+    </>
+  );
+}
+
+function Detail({ kind }) {
+  const { owner, repo, n } = useParams();
+  const base = `repos/${owner}/${repo}`;
+  const { data: item, error } = useGitHub(`${base}/${kind}/${n}`, FULL);
+  if (error || !item) return <Status error={error} data={item} />;
+  const isPR = kind === 'pulls';
+  const status = item.merged ? 'merged'
+    : item.draft ? 'draft'
+    : item.state === 'closed' && item.state_reason === 'not_planned' ? 'not planned'
+    : item.state;
+  return (
+    <>
+      <p className="kicker"><Link to={`/repos/${owner}/${repo}/${kind}`}>← {owner}/{repo}</Link></p>
+      <h1>{item.title} <span className="num">#{n}</span></h1>
+      <p className="kicker">
+        <span className={`badge status-${status.replace(' ', '-')}`}>{status}</span> opened by {item.user?.login} on{' '}
+        {date(item.created_at)} · <Ext href={item.html_url}>view on github ↗</Ext>
+      </p>
+      {isPR && (
+        <p className="kicker">
+          <code>{item.head.ref}</code> → <code>{item.base.ref}</code> · {plural(item.commits, 'commit')} ·{' '}
+          {plural(item.changed_files, 'file')} · +{item.additions} −{item.deletions}
+        </p>
+      )}
+      <Markdown html={item.body_html} empty="No description." />
+      {isPR && (
+        <>
+          <h3>Files changed</h3>
+          <List path={`${base}/pulls/${n}/files?per_page=100`} render={(f) => (
+            <li key={f.filename}>
+              <code>{f.filename}</code> <span className="muted">{f.status} · +{f.additions} −{f.deletions}</span>
+            </li>
+          )} />
+          <h3>Reviews</h3>
+          <List path={`${base}/pulls/${n}/reviews`} accept={FULL} empty="No reviews yet." render={(r) => (
+            <li key={r.id}>
+              <b>{r.user?.login}</b> <span className="badge">{r.state.replace('_', ' ').toLowerCase()}</span>
+              <span className="muted">{date(r.submitted_at)}</span>
+              <Markdown html={r.body_html} />
+            </li>
+          )} />
+          <h3>Review comments</h3>
+          <List path={`${base}/pulls/${n}/comments?per_page=100`} accept={FULL} empty="No inline code comments."
+            render={(c) => (
+              <li key={c.id}>
+                <b>{c.user?.login}</b> on <code>{c.path}</code>
+                <span className="muted">{c.line ?? c.original_line ? `line ${c.line ?? c.original_line} · ` : ''}{date(c.created_at)}</span>
+                <Markdown html={c.body_html} />
+              </li>
+            )} />
+        </>
+      )}
+      <h3>Comments</h3>
+      <List path={`${base}/issues/${n}/comments?per_page=100`} accept={FULL} empty="No comments yet." render={(c) => (
+        <li key={c.id}>
+          <b>{c.user?.login}</b> <span className="muted">{date(c.created_at)}</span>
+          <Markdown html={c.body_html} />
+        </li>
+      )} />
+    </>
+  );
+}
+
+createRoot(document.getElementById('root')).render(
+  <StrictMode>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route element={<Layout />}>
+          <Route path="/repos" element={<Repos />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/repos/:owner/:repo/:tab?" element={<Repo />} />
+          <Route path="/repos/:owner/:repo/pulls/:n" element={<Detail kind="pulls" />} />
+          <Route path="/repos/:owner/:repo/issues/:n" element={<Detail kind="issues" />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
+  </StrictMode>,
+);
