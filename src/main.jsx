@@ -1,5 +1,5 @@
 import {
-  Component, StrictMode, createContext, useCallback, useContext, useEffect, useRef, useState,
+  Component, Fragment, StrictMode, createContext, useCallback, useContext, useEffect, useRef, useState,
 } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
@@ -867,6 +867,74 @@ function Home() {
   );
 }
 
+// ⌘K / Ctrl+K: jump to a page, a repo, or an issue/PR in the current repo ("#14" goes straight there).
+const REPOS_PATH = 'user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member';
+function QuickSearch({ repo, onClose }) {
+  const nav = useNavigate();
+  const ref = useRef(null);
+  const [q, setQ] = useState('');
+  const [sel, setSel] = useState(0);
+  const repos = useGitHub(REPOS_PATH);
+  // Hooks can't be conditional; outside a repo this re-reads the cached repo list and is ignored.
+  const items = useGitHub(repo ? `repos/${repo}/issues?state=all&per_page=100` : REPOS_PATH);
+  useEffect(() => { ref.current.showModal(); }, []);
+
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const hit = (text) => words.every((w) => text.toLowerCase().includes(w));
+  const num = q.match(/^#?(\d+)$/)?.[1];
+  const go = (to) => () => { onClose(); nav(to); };
+  const results = [];
+  if (repo && num) {
+    const i = items.data?.find?.((x) => x.number === Number(num));
+    results.push({ key: `n${num}`, group: 'Go to', icon: i && <StateIcon item={i} />, label: i ? `#${num} ${i.title}` : `#${num}`,
+      run: go(`/repos/${repo}/${i?.pull_request ? 'pulls' : 'issues'}/${num}`) });
+  }
+  const pages = [['Repositories', '/repos'], ['Settings', '/settings'],
+    ...(repo ? Object.entries(TABS).map(([k, label]) => [`${label} · ${repo.split('/')[1]}`, `/repos/${repo}/${k === 'code' ? 'commits' : k}`]) : [])];
+  for (const [label, to] of pages) if (hit(label)) results.push({ key: to, group: 'Pages', label, run: go(to) });
+  if (repo && Array.isArray(items.data)) {
+    for (const i of items.data.filter((x) => !num && hit(`#${x.number} ${x.title}`)).slice(0, 8)) {
+      results.push({ key: `i${i.id}`, group: `Issues & pull requests · ${repo.split('/')[1]}`, icon: <StateIcon item={i} />,
+        label: `#${i.number} ${i.title}`, run: go(`/repos/${repo}/${i.pull_request ? 'pulls' : 'issues'}/${i.number}`) });
+    }
+  }
+  for (const r of (repos.data ?? []).filter((r) => hit(r.full_name)).slice(0, 6)) {
+    results.push({ key: `r${r.id}`, group: 'Repositories', label: r.full_name, run: go(`/repos/${r.full_name}`) });
+  }
+  const active = Math.min(sel, results.length - 1);
+
+  const onKey = (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSel((active + (e.key === 'ArrowDown' ? 1 : -1) + results.length) % Math.max(results.length, 1));
+    } else if (e.key === 'Enter' && results[active]) {
+      e.preventDefault();
+      results[active].run();
+    }
+  };
+  useEffect(() => { ref.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' }); }, [active]);
+
+  return (
+    <dialog ref={ref} className="dialog palette" onClose={onClose} onClick={(e) => e.target === ref.current && onClose()} aria-label="Quick search">
+      <input type="search" autoFocus placeholder={repo ? `Search ${repo.split('/')[1]}, repos and pages… (#14 jumps to an issue)` : 'Search repos and pages…'}
+        value={q} onChange={(e) => { setQ(e.target.value); setSel(0); }} onKeyDown={onKey}
+        role="combobox" aria-expanded="true" aria-controls="palette-results" aria-activedescendant={results[active] ? `pr-${results[active].key}` : undefined} />
+      <ul id="palette-results" role="listbox" className="palette-results">
+        {results.map((r, i) => (
+          <Fragment key={r.key}>
+            {r.group !== results[i - 1]?.group && <li role="presentation" className="palette-group">{r.group}</li>}
+            <li id={`pr-${r.key}`} role="option" aria-selected={i === active} onMouseMove={() => setSel(i)} onClick={r.run}>
+              {r.icon}<span>{r.label}</span>
+            </li>
+          </Fragment>
+        ))}
+        {!results.length && <li className="palette-empty">{repos.data ? 'No matches' : 'Loading…'}</li>}
+      </ul>
+      <p className="palette-foot"><kbd>↑</kbd><kbd>↓</kbd> move · <kbd>↵</kbd> open · <kbd>esc</kbd> close</p>
+    </dialog>
+  );
+}
+
 function Layout() {
   const nav = useNavigate();
   const { pathname } = useLocation();
@@ -874,6 +942,14 @@ function Layout() {
   const slack = useSlackState();
   const llm = useLlmSettings();
   const [chatOpen, setChatOpen] = useState(false); // narrow screens: the chat overlay
+  const [searching, setSearching] = useState(false);
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key.toLowerCase() === 'k' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); setSearching((v) => !v); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const [chatHidden, setChatHidden] = useState(() => { try { return localStorage.getItem('chat') === 'hidden'; } catch { return false; } });
   const showChat = useCallback((hidden) => {
     setChatHidden(hidden);
@@ -903,6 +979,9 @@ function Layout() {
       <div className="app">
         <header className="topbar app-topbar">
           <Brand to="/repos" />
+          <button type="button" className="search-trigger" onClick={() => setSearching(true)}>
+            <span>Search or jump to…</span><kbd>{/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl '}K</kbd>
+          </button>
           <nav className="nav">
             <NavLink to="/repos">repos</NavLink>
           <NavLink to="/settings">settings</NavLink>
@@ -923,6 +1002,7 @@ function Layout() {
               <ErrorBoundary key={pathname}><Outlet /></ErrorBoundary>
             </main>
             <Toasts />
+            {searching && <QuickSearch repo={repo} onClose={() => setSearching(false)} />}
             <Footer />
           </div>
           <ChatPanel repo={repo} open={chatOpen} onClose={() => setChatOpen(false)} />

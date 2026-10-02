@@ -501,3 +501,21 @@ a.tile:hover { border-color: var(--fg); }
 .tl-event { align-items: flex-start; }
 .tl-event img, .tl-dot { margin-top: 1px; }
 .tl-dot { width: 10px; height: 10px; margin: 4px 4px 0; border-radius: 50%; border: 2px solid var(--muted); background: var(--bg); flex: none; }
+
+/* ---------- quick search (⌘K) ---------- */
+.search-trigger { display: flex; align-items: center; justify-content: space-between; gap: var(--s-6); width: min(320px, 30vw); height: 32px;
+  margin: 0 auto 0 var(--s-8); padding: 0 var(--s-2) 0 var(--s-3); border: 1px solid var(--control); border-radius: var(--radius);
+  background: none; color: var(--muted); font: var(--text-md) var(--sans); cursor: pointer; }
+.search-trigger:hover { border-color: var(--fg); color: var(--fg); }
+kbd { padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; background: var(--subtle); color: var(--muted); font: var(--text-xs)/18px var(--mono); }
+.palette { width: min(600px, calc(100vw - 32px)); margin-top: 12vh; padding: 0; }
+.palette input[type="search"] { margin: 0; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; padding: var(--s-4); font-size: var(--text-base); }
+.palette input[type="search"]:focus { outline: none; }
+.palette-results { list-style: none; margin: 0; padding: var(--s-2); max-height: 50vh; overflow-y: auto; }
+.palette-results [role="option"] { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-2) var(--s-3); border-radius: var(--radius-sm); cursor: pointer; font-size: var(--text-md); }
+.palette-results [role="option"] span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-results [aria-selected="true"] { background: var(--subtle); }
+.palette-group { padding: var(--s-3) var(--s-3) var(--s-1); color: var(--muted); font: var(--text-xs) var(--mono); text-transform: lowercase; }
+.palette-empty { padding: var(--s-4) var(--s-3); color: var(--muted); font-size: var(--text-md); }
+.palette-foot { margin: 0; padding: var(--s-2) var(--s-4); border-top: 1px solid var(--border); color: var(--muted); font: var(--text-xs) var(--mono); display: flex; gap: var(--s-1); align-items: center; }
+@media (max-width: 760px) { .search-trigger span { display: none; } .search-trigger { width: auto; margin-left: auto; } }
