@@ -160,6 +160,37 @@ provider, your question and the matching Slack and GitHub text are sent to that 
 searches everything indexed so far. A repo is indexed the first time you ask about it; linked channels are re-indexed
 on every Slack sync, and the repo's **Slack** tab has a **rebuild index** button.
 
+### 7. Overdue alerts (optional)
+
+Issues get a deadline from their **milestone's due date**. Git-Help shows "overdue" badges, and its Slack bot can DM
+the assignee of an overdue issue to ask what's holding it up. Their reply is shown on the issue and the chat uses it
+to answer "why isn't #14 done?".
+
+1. In your Slack app's **App Manifest**, add a bot user, the Messages tab, bot scopes and Socket Mode:
+
+   ```json
+   "features": {
+       "bot_user": { "display_name": "Git-Help", "always_online": true },
+       "app_home": { "messages_tab_enabled": true, "messages_tab_read_only_enabled": false }
+   },
+   "oauth_config": { "scopes": {
+       "user": ["channels:read", "channels:history", "groups:read", "groups:history", "users:read", "chat:write"],
+       "bot": ["chat:write", "im:write", "im:history", "users:read", "users:read.email", "channels:read", "groups:read"]
+   } },
+   "settings": { "event_subscriptions": { "bot_events": ["message.im"] }, "socket_mode_enabled": true, … }
+   ```
+
+2. Reinstall the app. Copy the **Bot User OAuth Token** (`xoxb-…`) to `.env` as `SLACK_BOT_TOKEN`, and create an
+   **App-Level Token** with the `connections:write` scope (Basic Information) as `SLACK_APP_TOKEN` (`xapp-…`).
+   Leave app-level token rotation off.
+3. Restart `npm run dev`. In **Settings → slack bot**, click **match people**: GitHub logins are linked to Slack
+   users by commit email, then full name; weaker matches wait for you to confirm. The bot only messages confirmed links.
+4. In **Settings → overdue alerts**, turn a repo on. The preview shows exactly who would be messaged before anything
+   is sent. Checks run every 15 minutes while the app is running; one reminder after 3 days without a reply.
+
+To run checks without the page open, Git-Help keeps your GitHub token in `.data/`, encrypted with `SESSION_SECRET`;
+signing out deletes it.
+
 ## Troubleshooting
 
 | What you see | Fix |

@@ -422,6 +422,28 @@ function SlackThreads({ threads }) {
   );
 }
 
+// Replies the assignee gave the Git-Help bot about this issue being late (alerts.js).
+function LateReasons({ repo, number }) {
+  const [rows, setRows] = useState([]);
+  useEffect(() => {
+    api(`/followups?${new URLSearchParams({ repo, number })}`).then(setRows, () => setRows([]));
+  }, [repo, number]);
+  if (!rows.length) return null;
+  return (
+    <>
+      <h3>Why it's late</h3>
+      <ul className="list">
+        {rows.map((r) => (
+          <li key={r.created_at}>
+            <b>{r.github_login}</b> <span className="muted">{dateTime(r.created_at)}{r.permalink && <> · <Ext href={r.permalink}>open in slack ↗</Ext></>}</span>
+            <p className="slack-text">{r.text}</p>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 const SUGGESTIONS = {
   repo: [
     "What's blocking the open pull requests?",
@@ -903,6 +925,75 @@ function BotSettings() {
   );
 }
 
+// Per repo: whether the bot may DM assignees about overdue issues, who it would message now, and what it sent.
+function RepoAlerts({ repo }) {
+  const [data, setData] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const load = useCallback(() => api(`/alerts?${new URLSearchParams({ repo })}`).then(setData, (e) => setError(e.message)), [repo]);
+  useEffect(() => { load(); }, [load]);
+  const act = async (fn) => {
+    setBusy(true);
+    setError(null);
+    try { await fn(); await load(); } catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
+  if (!data) return <li className="muted">{repo} · loading…</li>;
+  return (
+    <li className="repo-alerts">
+      <label className="toggle-row">
+        <input type="checkbox" checked={data.enabled} disabled={busy}
+          onChange={(e) => act(() => api('/alerts', { method: 'PUT', body: { repo, enabled: e.target.checked } }))} />
+        <span>{repo}</span>
+      </label>
+      {error && <p className="error" role="alert">{error}</p>}
+      {data.enabled && (
+        <>
+          <p className="muted">
+            {data.send.length
+              ? `Would message now: ${data.send.map((a) => `${a.login} about #${a.number} (${a.days_late}d late${a.kind === 'reminder' ? ', reminder' : ''})`).join('; ')}.`
+              : 'Nobody to message right now.'}
+          </p>
+          {data.cannot.length > 0 && (
+            <p className="muted">Can't notify: {data.cannot.map((c) => `#${c.number} ${c.login ?? ''} (${c.reason})`).join('; ')}.</p>
+          )}
+          {data.send.length > 0 && (
+            <button type="button" className="link-btn" disabled={busy} onClick={() => act(() => api('/alerts/send', { method: 'POST', body: { repo } }))}>
+              {busy ? 'sending…' : 'send now'}
+            </button>
+          )}
+          {data.log.length > 0 && (
+            <ul className="alert-log">
+              {data.log.map((a) => (
+                <li key={a.id}>
+                  <span className="muted">{dateTime(a.sent_at)} · {a.kind} to {a.github_login} about #{a.number}</span>
+                  {a.reply ? <p className="slack-text">“{a.reply}”</p> : <span className="muted"> · no reply yet</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </li>
+  );
+}
+
+function AlertSettings() {
+  const [repos, setRepos] = useState(null);
+  useEffect(() => { api('/repos/indexed').then(setRepos, () => setRepos([])); }, []);
+  if (!repos) return <p className="muted">Loading…</p>;
+  if (!repos.length) return <p className="muted">No repos indexed yet: open a repo and ask the chat about it first.</p>;
+  return (
+    <>
+      <p className="muted">
+        When an open issue passes its milestone due date, the bot DMs each assignee with a confirmed Slack link and asks
+        what's holding it up. One reminder after 3 days without a reply, then nothing until the date changes. Replies show
+        on the issue and in the chat. Checks run every 15 minutes while the app is running.
+      </p>
+      <ul className="list">{repos.map((r) => <RepoAlerts key={r} repo={r} />)}</ul>
+    </>
+  );
+}
+
 function SettingsPage() {
   const { settings, reload } = useContext(LlmContext);
   const [form, setForm] = useState(null);
@@ -1000,6 +1091,10 @@ function SettingsPage() {
 
       <Section title="slack bot">
         <BotSettings />
+      </Section>
+
+      <Section title="overdue alerts">
+        <AlertSettings />
       </Section>
 
       {cloud.length > 0 && (
@@ -1222,6 +1317,7 @@ function Detail({ kind }) {
         </p>
       )}
       <Markdown html={item.body_html} empty="No description." />
+      {!isPR && <LateReasons repo={`${owner}/${repo}`} number={n} />}
       {isPR && (
         <>
           <h3>Files changed</h3>

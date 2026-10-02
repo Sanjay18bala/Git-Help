@@ -45,6 +45,16 @@ export function db() {
       github_login TEXT PRIMARY KEY, slack_user_id TEXT, slack_name TEXT, method TEXT, confidence TEXT,
       confirmed INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL);
 
+    -- Overdue alerts the bot sent, and the replies people gave (alerts.js).
+    CREATE TABLE IF NOT EXISTS alerts (
+      id INTEGER PRIMARY KEY, repo TEXT NOT NULL, number INTEGER NOT NULL, github_login TEXT NOT NULL,
+      slack_user_id TEXT NOT NULL, due_on TEXT NOT NULL, kind TEXT NOT NULL, sent_at TEXT NOT NULL,
+      channel_id TEXT NOT NULL, message_ts TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS followups (
+      id INTEGER PRIMARY KEY, alert_id INTEGER NOT NULL, repo TEXT NOT NULL, number INTEGER NOT NULL,
+      github_login TEXT NOT NULL, slack_user_id TEXT NOT NULL, text TEXT NOT NULL, ts TEXT NOT NULL,
+      permalink TEXT, created_at TEXT NOT NULL, UNIQUE (alert_id, ts));
+
     -- Keyword search over chunks, kept in sync by triggers (embedding updates don't touch it).
     CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(title, text, content='chunks', content_rowid='rowid');
     CREATE TRIGGER IF NOT EXISTS chunks_ai AFTER INSERT ON chunks BEGIN

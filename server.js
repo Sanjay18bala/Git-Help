@@ -1,6 +1,7 @@
 import express from 'express';
 import crypto from 'node:crypto';
 import { seal, unseal } from './secrets.js';
+import * as alerts from './alerts.js';
 import * as bot from './bot.js';
 import * as llm from './llm.js';
 import * as rag from './rag.js';
@@ -82,11 +83,13 @@ app.get('/auth/callback', async (req, res) => {
   if (!access_token) return res.redirect(`/?error=${encodeURIComponent(error ?? 'oauth_failed')}`);
 
   res.append('Set-Cookie', cookie('session', seal({ token: access_token }), 60 * 60 * 24 * 30));
+  alerts.rememberGithubToken(access_token); // for the overdue check, which runs with no browser open
   res.redirect('/repos');
 });
 
 app.post('/auth/logout', (req, res) => {
   res.append('Set-Cookie', cookie('session', '', 0));
+  alerts.forgetGithubToken();
   res.sendStatus(204);
 });
 
@@ -124,6 +127,7 @@ const slackApi = express.Router();
 const requireSession = (req, res, next) => {
   req.token = unseal(cookies(req).session ?? '')?.token;
   if (!req.token) return res.status(401).json({ message: 'Not signed in' });
+  alerts.rememberGithubToken(req.token); // sessions from before this feature get stored too
   next();
 };
 slackApi.use(requireSession, express.json());
@@ -212,12 +216,13 @@ api.get('/bot/status', async (req, res) => {
   if (!process.env.SLACK_BOT_TOKEN) return res.json({ configured: false });
   try {
     const { user, team } = await bot.botIdentity();
-    res.json({ configured: true, user, team, socket: Boolean(process.env.SLACK_APP_TOKEN) });
+    res.json({ configured: true, user, team, socket: process.env.SLACK_APP_TOKEN ? alerts.socketState() : 'no SLACK_APP_TOKEN' });
   } catch (e) {
     res.json({ configured: false, error: slack.friendly(e.message) });
   }
 });
 const indexedRepos = () => db().prepare('SELECT repo FROM indexed_repos').all().map((r) => r.repo);
+api.get('/repos/indexed', (req, res) => res.json(indexedRepos()));
 api.get('/people', async (req, res) => res.json({ people: bot.listPeople(), slackUsers: await bot.slackPeople() }));
 api.post('/people/match', async (req, res) => res.json({ people: await bot.refreshPeople(indexedRepos(), req.token) }));
 api.put('/people/:login', async (req, res) => {
@@ -229,6 +234,32 @@ api.put('/people/:login', async (req, res) => {
   const user = id && (await bot.slackPeople()).find((u) => u.id === id);
   if (id && !user) throw Object.assign(new Error('Unknown Slack user'), { status: 400 });
   res.json({ people: bot.setPerson(login, id, user && (user.display || user.real || user.handle)) });
+});
+
+// ---- Overdue alerts (see alerts.js) ----
+api.get('/alerts', (req, res) => {
+  const repo = repoParam(req.query.repo);
+  const { send, cannot } = alerts.planAlerts();
+  res.json({
+    enabled: alerts.alertRepos().includes(repo),
+    send: send.filter((a) => a.repo === repo),
+    cannot: cannot.filter((a) => a.repo === repo),
+    log: alerts.alertLog(repo),
+  });
+});
+api.put('/alerts', (req, res) => {
+  alerts.setAlerts(repoParam(req.body?.repo), req.body?.enabled === true);
+  res.json({ repos: alerts.alertRepos() });
+});
+api.post('/alerts/send', async (req, res) => {
+  const repo = repoParam(req.body?.repo);
+  await rag.indexGithub(repo, req.token); // decide on fresh states and due dates
+  res.json({ sent: (await alerts.sendAlerts()).filter((a) => a.repo === repo) });
+});
+api.get('/followups', (req, res) => {
+  const number = Number(req.query.number);
+  if (!Number.isInteger(number) || number < 1) throw Object.assign(new Error('Invalid number'), { status: 400 });
+  res.json(alerts.followupsFor(repoParam(req.query.repo), number));
 });
 
 const chatMessages = (v) => {

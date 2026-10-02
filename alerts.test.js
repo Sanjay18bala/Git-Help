@@ -1,0 +1,83 @@
+import assert from 'node:assert/strict';
+
+process.env.GIT_HELP_DB = ':memory:';
+process.env.SLACK_BOT_TOKEN = 'xoxb-test';
+process.env.SESSION_SECRET = 'test-secret';
+const { db } = await import('./db.js');
+const alerts = await import('./alerts.js');
+const rag = await import('./rag.js');
+
+// Fake Slack: record bot calls. Fake Ollama embeddings for indexing the reply.
+const posted = [];
+globalThis.fetch = async (url, init = {}) => {
+  const u = new URL(url);
+  if (u.pathname === '/api/embed') {
+    const { input } = JSON.parse(init.body);
+    return new Response(JSON.stringify({ embeddings: input.map(() => Array(8).fill(0.1)) }));
+  }
+  const method = u.pathname.split('/').pop();
+  const p = Object.fromEntries(new URLSearchParams(init.body ?? ''));
+  const ok = (b) => new Response(JSON.stringify({ ok: true, ...b }));
+  if (method === 'conversations.open') return ok({ channel: { id: `D-${p.users}` } });
+  if (method === 'chat.postMessage') { posted.push(p); return ok({ ts: `${1_790_000_000 + posted.length}.000100` }); }
+  if (method === 'chat.getPermalink') return ok({ permalink: `https://ws.slack.com/archives/${p.channel}/p${p.message_ts}` });
+  throw new Error(`unexpected ${url}`);
+};
+
+const d = db();
+const item = d.prepare(`INSERT INTO items (repo, number, kind, state, draft, title, url, labels, assignees, author, created_at, updated_at, milestone, due_on)
+  VALUES ('o/r', ?, 'issue', ?, 0, ?, ?, '', ?, 'x', 'x', 'x', 'v1', ?)`);
+item.run(14, 'open', 'CSV breaks', 'https://github.com/o/r/issues/14', 'priya', '2026-09-29');
+item.run(8, 'open', 'Add CI', 'https://github.com/o/r/issues/8', 'zed', '2026-09-29'); // zed has no Slack link
+item.run(6, 'open', 'Grind size', 'https://github.com/o/r/issues/6', '', '2026-09-29'); // nobody assigned
+item.run(3, 'open', 'Colors', 'https://github.com/o/r/issues/3', 'priya', '2026-10-15'); // not due yet
+item.run(1, 'closed', 'Old bug', 'https://github.com/o/r/issues/1', 'priya', '2026-09-01'); // closed: never late
+d.prepare("INSERT INTO people VALUES ('priya', 'UPRIYA', 'Priya', 'email', 'high', 1, 'x')").run();
+
+const today = '2026-10-01';
+assert.deepEqual(alerts.planAlerts(today).send, [], 'alerts are off until a repo is enabled');
+alerts.setAlerts('o/r', true);
+
+let plan = alerts.planAlerts(today);
+assert.deepEqual(plan.send.map((a) => [a.number, a.login, a.kind, a.days_late]), [[14, 'priya', 'first', 2]]);
+assert.deepEqual(plan.cannot.map((c) => [c.number, c.login, c.reason]).sort(), [
+  [6, null, 'nobody is assigned'], [8, 'zed', 'no confirmed Slack link (Settings → slack bot)']]);
+assert.match(alerts.alertText(plan.send[0]), /^Hi! <https:\/\/github\.com\/o\/r\/issues\/14\|#14 CSV breaks> in o\/r was due Sep 29 \(milestone v1, 2 days ago\)/);
+
+// Send: one DM, logged; planning again sends nothing new.
+const realPlan = alerts.planAlerts;
+await (async () => {
+  const sent = await alerts.sendAlerts();
+  assert.equal(sent.length, 1);
+})();
+assert.equal(posted.length, 1);
+assert.equal(posted[0].channel, 'D-UPRIYA');
+assert.deepEqual(realPlan(today).send, [], 'no duplicate alert');
+
+// Reminder only after 3 days without a reply.
+const sentAt = Date.parse(d.prepare('SELECT sent_at FROM alerts').get().sent_at);
+assert.deepEqual(realPlan(today, sentAt + 2 * 86_400_000).send, []);
+assert.deepEqual(realPlan(today, sentAt + 3 * 86_400_000).send.map((a) => a.kind), ['reminder']);
+
+// A reply in the alert's thread is stored, acknowledged, and becomes the reason in the chat overview.
+const alertTs = d.prepare('SELECT message_ts FROM alerts').get().message_ts;
+const got = await alerts.recordReply({ channel: 'D-UPRIYA', user: 'UPRIYA', text: 'Waiting on review of the quoting fix', ts: '1790000100.000200', thread_ts: alertTs });
+assert.equal(got.number, 14);
+assert.deepEqual(alerts.followupsFor('o/r', 14).map((f) => [f.github_login, f.text]), [['priya', 'Waiting on review of the quoting fix']]);
+assert.match(posted.at(-1).text, /Thanks, noted for #14/);
+assert.equal(posted.at(-1).thread_ts, alertTs);
+d.prepare("INSERT INTO indexed_repos VALUES ('o/r', '2026-10-01T00:00:00Z')").run();
+assert.match(rag.repoOverview('o/r').text, /#14 CSV breaks \(issue; assigned to priya; milestone v1, due 2026-09-29, \d+ days late; reason given by priya on \d{4}-\d\d-\d\d: "Waiting on review of the quoting fix"\)/);
+assert.match(d.prepare("SELECT text FROM chunks WHERE id LIKE 'followup:%'").get().text, /priya \(the assignee\) replied to the Git-Help bot about overdue issue #14 "CSV breaks"/);
+
+// After a reply: no reminder. A message with no alert in that DM is ignored.
+assert.deepEqual(realPlan(today, sentAt + 5 * 86_400_000).send, []);
+assert.equal(await alerts.recordReply({ channel: 'D-OTHER', user: 'U9', text: 'hi', ts: '1790000200.0001' }), null);
+
+// The stored background token is sealed, and removed on sign-out.
+alerts.rememberGithubToken('gho_secret');
+assert(!d.prepare("SELECT value FROM settings WHERE key = 'github'").get().value.includes('gho_secret'));
+alerts.forgetGithubToken();
+assert.equal(d.prepare("SELECT 1 FROM settings WHERE key = 'github'").get(), undefined);
+
+console.log('ok');

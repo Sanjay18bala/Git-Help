@@ -112,9 +112,9 @@ assert.deepEqual(d.prepare("SELECT number, kind, state, due_on FROM items WHERE 
 ]);
 const overview = rag.repoOverview('o/brewlog');
 assert.match(overview.text, new RegExp(`Today is ${rag.localDate()}\\.`));
-assert.match(overview.text, /- open issues: 2\n- open pull requests: 0\n- overdue \(open, past their milestone due date\): 1\n- upcoming deadlines \(open, due today or later\): 1\n/);
+assert.match(overview.text, /- open issues: 2\n- open pull requests: 0\n- overdue \(open, past their milestone due date\): 1 \(#14\)\n- overdue with a reason from the assignee: 0\n- overdue with no reason yet: 1 \(#14\)\n- upcoming deadlines \(open, due today or later\): 1\n/);
 assert.match(overview.text, /- all issues ever, open and closed: 3\n- all pull requests ever, open and closed: 1/);
-assert.match(overview.text, /Overdue:\n- #14 CSV export breaks on commas \(issue; labels: bug; assigned to priya; milestone v0\.3\.0, due 2020-01-01, \d+ days late\)/);
+assert.match(overview.text, /Overdue:\n- #14 CSV export breaks on commas \(issue; labels: bug; assigned to priya; milestone v0\.3\.0, due 2020-01-01, \d+ days late; no reason given yet\)/);
 assert.match(overview.text, /Upcoming deadlines:\n- #3 Colorize list \(issue; milestone v0\.4\.0, due \d{4}-\d\d-\d\d, in 3 days\)/);
 assert.match(overview.text, /Closed issues:\n- #9 Storage: JSON or SQLite\? \(issue; labels: question\)/);
 assert.match(overview.text, /Closed pull requests that were not merged:\n- #16 experiment: SQLite storage backend \(pull request\)/);

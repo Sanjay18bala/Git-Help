@@ -30,6 +30,9 @@ const CASES = [
   // Deadlines come from milestone due dates (demo: v0.3.0 was due Sep 29 with #14, #8, #6; v0.4.0 due Oct 15).
   { q: 'Which issues are overdue?', expect: /overview/, answer: /(?=[\s\S]*#14)(?=[\s\S]*#8)(?=[\s\S]*#6)/ },
   { q: "What's due in the next couple of weeks?", expect: /overview/, answer: /#3|#2|v0\.4\.0|Oct(ober)? 15|10-15/i },
+  // Reasons people gave the Git-Help bot (demo: Sanjay18bala replied "I was sick" about #6).
+  { q: "Why isn't #6 done yet?", answer: /sick/i },
+  { q: 'Which overdue issues still have no reason from the assignee?', expect: /overview/, answer: /^(?=[\s\S]*#14)(?=[\s\S]*#8)(?![\s\S]*#6\b[^\n]*(no reason|not given))/ },
   // Small talk and general questions: answered naturally, no citations, no "sources" talk.
   { q: 'hello, how are you?', cite: false, answer: /^(?![\s\S]*(provided sources|pull request))/i },
   { q: 'What is the difference between git merge and git rebase?', cite: false, answer: /rebase/i },

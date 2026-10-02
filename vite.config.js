@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { app, checkEnv } from './server.js';
+import { startBackground } from './alerts.js';
 
 export default defineConfig({
   plugins: [
@@ -11,6 +12,7 @@ export default defineConfig({
       configureServer(server) {
         checkEnv();
         server.middlewares.use(app);
+        startBackground(); // overdue checks every 15 min + the Slack Socket Mode listener for replies
       },
     },
   ],

@@ -368,3 +368,12 @@ main > button:disabled { cursor: progress; opacity: .6; }
 .person-how .badge { margin: 0; }
 .person-how .link-btn { font: 12px var(--mono); }
 @media (max-width: 560px) { .people .person { grid-template-columns: 1fr; gap: 6px; } }
+
+/* ---------- settings: overdue alerts ---------- */
+.repo-alerts .muted, .repo-alerts .error { display: block; margin: 6px 0 0; font: 13px/1.5 var(--sans); }
+.toggle-row { display: flex; align-items: center; gap: 10px; font: 14px var(--mono); cursor: pointer; }
+.toggle-row input { width: 16px; height: 16px; accent-color: var(--fg); }
+.repo-alerts .link-btn { margin-top: 8px; font: 12px var(--mono); color: var(--fg); text-decoration: underline; }
+.alert-log { margin: 10px 0 0; padding-left: 14px; border-left: 2px solid var(--border); list-style: none; }
+.alert-log li { padding: 4px 0; }
+.alert-log .muted { display: inline !important; font: 12px var(--mono) !important; }
