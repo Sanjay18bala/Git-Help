@@ -155,7 +155,7 @@ class ErrorBoundary extends Component {
       <div className="alert" role="alert">
         <span className="alert-label">something went wrong on this page</span>
         {this.state.error.message}
-        <button className="link-btn" onClick={() => window.location.reload()}>reload page</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => window.location.reload()}>reload page</button>
       </div>
     );
   }
@@ -174,7 +174,7 @@ function List({ path, render, keep, accept, empty = 'Nothing here.' }) {
   return (
     <>
       {items.length ? <ul className="list">{items.map(render)}</ul> : <p className="muted">{empty}</p>}
-      {(more || busy) && <button onClick={more || undefined} disabled={busy}>{busy ? 'Loading…' : 'Load more'}</button>}
+      {(more || busy) && <button className="btn" onClick={more || undefined} disabled={busy}>{busy ? 'Loading…' : 'Load more'}</button>}
     </>
   );
 }
@@ -268,7 +268,7 @@ function SlackLinkDialog({ repo, onClose }) {
             <h2 className="chat-title">link slack channel</h2>
             <div className="chat-context">{repo}{status?.configured && ` · ${status.team}`}</div>
           </div>
-          <button type="button" className="link-btn" onClick={() => ref.current.close()}>close</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => ref.current.close()}>close</button>
         </header>
 
         {status && !status.configured ? (
@@ -381,11 +381,11 @@ function SlackTab({ repo }) {
       <div className="actions">
         {mine.length > 0 && (
           <>
-            <button type="button" className="primary" onClick={() => syncNow(false)} disabled={syncing}>{syncing ? 'syncing…' : 'sync now'}</button>
-            <button type="button" className="link-btn" onClick={() => syncNow(true)} disabled={syncing}>full resync</button>
+            <button type="button" className="btn btn-primary" onClick={() => syncNow(false)} disabled={syncing}>{syncing ? 'syncing…' : 'sync now'}</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => syncNow(true)} disabled={syncing}>full resync</button>
           </>
         )}
-        <button type="button" className="link-btn" onClick={rebuild} disabled={syncing}>rebuild index</button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={rebuild} disabled={syncing}>rebuild index</button>
         <SlackLinkButton repo={repo} />
       </div>
       {error && <p className="error" role="alert">{error}</p>}
@@ -615,9 +615,9 @@ function ChatPanel({ repo, open, onClose }) {
         </div>
         <div className="chat-head-actions">
           {messages.length > 0 && !busy && (
-            <button type="button" className="link-btn" onClick={() => setThreads((t) => ({ ...t, [key]: [] }))}>new chat</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setThreads((t) => ({ ...t, [key]: [] }))}>new chat</button>
           )}
-          <button type="button" className="link-btn chat-close" onClick={onClose}>close</button>
+          <button type="button" className="btn btn-ghost btn-sm chat-close" onClick={onClose}>close</button>
         </div>
       </header>
 
@@ -689,7 +689,7 @@ function ThemeToggle() {
     try { localStorage.setItem('theme', next); } catch {}
     setTheme(next);
   };
-  return <button className="link-btn" onClick={flip} aria-label={`Switch to ${next} theme`}>{next}</button>;
+  return <button className="btn btn-ghost btn-sm" onClick={flip} aria-label={`Switch to ${next} theme`}>{next}</button>;
 }
 
 const Footer = () => (
@@ -742,7 +742,7 @@ function Home() {
           )}
 
           <div className="cta">
-            <a className="btn-primary" href="/auth/login"><GitHubMark />Continue with GitHub</a>
+            <a className="btn btn-primary btn-lg" href="/auth/login"><GitHubMark />Continue with GitHub</a>
             <span className="hint">read-only · your password never touches this app</span>
           </div>
         </section>
@@ -810,7 +810,7 @@ function Layout() {
           <nav className="nav">
             <NavLink to="/repos">repos</NavLink>
           <NavLink to="/settings">settings</NavLink>
-          <button type="button" className="link-btn chat-toggle" aria-pressed={!chatHidden}
+          <button type="button" className="btn btn-ghost btn-sm chat-toggle" aria-pressed={!chatHidden}
             title={chatHidden ? 'Show chat (press /)' : 'Hide chat'} onClick={() => showChat(!chatHidden)}>chat</button>
             {me && (
               <span className="me">
@@ -818,7 +818,7 @@ function Layout() {
                 {me.login}
               </span>
             )}
-            <button className="link-btn" onClick={logout}>sign out</button>
+            <button className="btn btn-ghost btn-sm" onClick={logout}>sign out</button>
           </nav>
         </header>
         <div className={`shell${chatHidden ? ' no-chat' : ''}`}>
@@ -871,7 +871,7 @@ function KeyField({ label, id, state, value, cleared, onChange, onClear }) {
       <div className="field-row">
         <input id={id} type="password" autoComplete="off" value={value} placeholder={hint}
           onChange={(e) => onChange(e.target.value)} />
-        {state === 'saved' && !cleared && <button type="button" className="link-btn" onClick={onClear}>remove</button>}
+        {state === 'saved' && !cleared && <button type="button" className="btn btn-ghost btn-sm" onClick={onClear}>remove</button>}
       </div>
     </div>
   );
@@ -944,7 +944,7 @@ function BotSettings() {
               <span className="person-how">
                 {p.slack_user_id && <span className={`badge ${p.confirmed ? 'ok' : 'soon'}`}>{MATCH_LABEL[p.method] ?? p.method}</span>}
                 {p.slack_user_id && !p.confirmed && (
-                  <button type="button" className="link-btn" disabled={busy} onClick={() => setLink(p.github_login, p.slack_user_id)}>confirm</button>
+                  <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setLink(p.github_login, p.slack_user_id)}>confirm</button>
                 )}
               </span>
             </li>
@@ -952,7 +952,7 @@ function BotSettings() {
         </ul>
       )}
       <div className="actions">
-        <button type="button" className="primary" disabled={busy} onClick={() => run(() => api('/people/match', { method: 'POST' }))}>
+        <button type="button" className="btn btn-primary" disabled={busy} onClick={() => run(() => api('/people/match', { method: 'POST' }))}>
           {busy ? 'matching…' : 'match people from indexed repos'}
         </button>
       </div>
@@ -992,7 +992,7 @@ function RepoAlerts({ repo }) {
             <p className="muted">Can't notify: {data.cannot.map((c) => `#${c.number} ${c.login ?? ''} (${c.reason})`).join('; ')}.</p>
           )}
           {data.send.length > 0 && (
-            <button type="button" className="primary small" disabled={busy} onClick={() => act(() => api('/alerts/send', { method: 'POST', body: { repo } }))}>
+            <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => act(() => api('/alerts/send', { method: 'POST', body: { repo } }))}>
               {busy ? 'sending…' : 'send now'}
             </button>
           )}
@@ -1140,8 +1140,8 @@ function SettingsPage() {
       )}
 
       <div className="actions">
-        <button type="submit" className="primary" disabled={saving}>{saving ? 'saving…' : 'save'}</button>
-        <button type="button" className="link-btn" disabled={saving} onClick={() => save(true)}>save & test connection</button>
+        <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'saving…' : 'save'}</button>
+        <button type="button" className="btn" disabled={saving} onClick={() => save(true)}>save & test connection</button>
       </div>
       {notice && <p className={notice.ok ? 'muted' : 'error'} role="status">{notice.text}</p>}
       {test && (
@@ -1191,7 +1191,7 @@ function Repos() {
           </li>
         ))}
       </ul>
-      {more && <button onClick={more}>Load more</button>}
+      {more && <button className="btn" onClick={more}>Load more</button>}
     </>
   );
 }
@@ -1268,7 +1268,7 @@ function Attention({ repo }) {
                   {i.alerted_at && !i.reason && ` · bot asked ${new Date(i.alerted_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}
                 </span>
                 {i.reason ? <Reason r={i.reason} /> : (
-                  <button type="button" className="ask-btn" onClick={() => askChat(`Why isn't #${i.number} done yet?`)}>ask why →</button>
+                  <button type="button" className="btn btn-sm ask-btn" onClick={() => askChat(`Why isn't #${i.number} done yet?`)}>ask why →</button>
                 )}
               </li>
             ))}
