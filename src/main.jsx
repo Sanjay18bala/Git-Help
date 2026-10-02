@@ -831,6 +831,78 @@ function ModelField({ id, label, value, options, onChange, hint }) {
   );
 }
 
+const MATCH_LABEL = { email: 'same email', name: 'same name', handle: 'same handle', 'first-name': 'first name only', manual: 'set by you' };
+
+// Who the bot may message: GitHub logins linked to Slack users. Uncertain matches wait for a confirm.
+function BotSettings() {
+  const [status, setStatus] = useState(null);
+  const [data, setData] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  useEffect(() => {
+    api('/bot/status').then(setStatus, (e) => setError(e.message));
+    api('/people').then(setData, () => setData({ people: [], slackUsers: [] }));
+  }, []);
+  const run = async (fn) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const { people } = await fn();
+      setData((d) => ({ ...d, people }));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const setLink = (login, slackUserId) => run(() => api(`/people/${encodeURIComponent(login)}`, { method: 'PUT', body: { slack_user_id: slackUserId || null } }));
+
+  if (!status) return <p className="muted">Loading…</p>;
+  if (!status.configured) {
+    return (
+      <p className="muted">
+        {status.error ?? "The Slack bot isn't set up."} Add the bot scopes from the README manifest, reinstall the app, and put
+        {' '}<code>SLACK_BOT_TOKEN</code> and <code>SLACK_APP_TOKEN</code> in <code>.env</code>.
+      </p>
+    );
+  }
+  return (
+    <>
+      <p className="muted">
+        Connected as <b>@{status.user}</b> in {status.team}{status.socket ? '' : ' · SLACK_APP_TOKEN missing: replies can\'t be received'}.
+        The bot only messages people with a confirmed link.
+      </p>
+      {error && <p className="error" role="alert">{error}</p>}
+      {!data ? <p className="muted">Loading people…</p> : (
+        <ul className="list people">
+          {data.people.length === 0 && <li className="muted">No people yet: match them from your indexed repos.</li>}
+          {data.people.map((p) => (
+            <li key={p.github_login} className="person">
+              <span className="person-login">{p.github_login}</span>
+              <select aria-label={`Slack user for ${p.github_login}`} value={p.slack_user_id ?? ''} disabled={busy}
+                onChange={(e) => setLink(p.github_login, e.target.value)}>
+                <option value="">can't notify</option>
+                {data.slackUsers.map((u) => <option key={u.id} value={u.id}>{u.display || u.real || u.handle}</option>)}
+              </select>
+              <span className="person-how">
+                {p.slack_user_id && <span className={`badge${p.confirmed ? '' : ' soon'}`}>{MATCH_LABEL[p.method] ?? p.method}</span>}
+                {p.slack_user_id && !p.confirmed && (
+                  <button type="button" className="link-btn" disabled={busy} onClick={() => setLink(p.github_login, p.slack_user_id)}>confirm</button>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="actions">
+        <button type="button" disabled={busy} onClick={() => run(() => api('/people/match', { method: 'POST' }))}>
+          {busy ? 'matching…' : 'match people from indexed repos'}
+        </button>
+      </div>
+    </>
+  );
+}
+
 function SettingsPage() {
   const { settings, reload } = useContext(LlmContext);
   const [form, setForm] = useState(null);
@@ -924,6 +996,10 @@ function SettingsPage() {
           cleared={form.clear.openai} onChange={(v) => set({ openaiKey: v })}
           onClear={() => set({ clear: { ...form.clear, openai: true } })} />
         <p className="hint">Keys are stored encrypted on this machine and never sent back to the browser.</p>
+      </Section>
+
+      <Section title="slack bot">
+        <BotSettings />
       </Section>
 
       {cloud.length > 0 && (

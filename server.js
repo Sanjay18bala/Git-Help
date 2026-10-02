@@ -1,9 +1,11 @@
 import express from 'express';
 import crypto from 'node:crypto';
 import { seal, unseal } from './secrets.js';
+import * as bot from './bot.js';
 import * as llm from './llm.js';
 import * as rag from './rag.js';
 import * as slack from './slack.js';
+import { db } from './db.js';
 
 try {
   process.loadEnvFile(); // reads .env; missing keys are reported by checkEnv()
@@ -203,6 +205,30 @@ api.post('/index', async (req, res) => {
   await rag.indexGithub(repo, req.token);
   for (const { channel_id } of slack.links().filter((l) => l.repo === repo)) await rag.indexSlack(channel_id);
   res.json(rag.indexStats(repo));
+});
+
+// ---- Slack bot: status and GitHub ↔ Slack people links (see bot.js) ----
+api.get('/bot/status', async (req, res) => {
+  if (!process.env.SLACK_BOT_TOKEN) return res.json({ configured: false });
+  try {
+    const { user, team } = await bot.botIdentity();
+    res.json({ configured: true, user, team, socket: Boolean(process.env.SLACK_APP_TOKEN) });
+  } catch (e) {
+    res.json({ configured: false, error: slack.friendly(e.message) });
+  }
+});
+const indexedRepos = () => db().prepare('SELECT repo FROM indexed_repos').all().map((r) => r.repo);
+api.get('/people', async (req, res) => res.json({ people: bot.listPeople(), slackUsers: await bot.slackPeople() }));
+api.post('/people/match', async (req, res) => res.json({ people: await bot.refreshPeople(indexedRepos(), req.token) }));
+api.put('/people/:login', async (req, res) => {
+  const login = req.params.login;
+  const id = req.body?.slack_user_id ?? null;
+  if (!/^[\w-]{1,39}$/.test(login) || (id !== null && !/^[UW][A-Z0-9]+$/.test(id))) {
+    throw Object.assign(new Error('Invalid login or Slack user'), { status: 400 });
+  }
+  const user = id && (await bot.slackPeople()).find((u) => u.id === id);
+  if (id && !user) throw Object.assign(new Error('Unknown Slack user'), { status: 400 });
+  res.json({ people: bot.setPerson(login, id, user && (user.display || user.real || user.handle)) });
 });
 
 const chatMessages = (v) => {

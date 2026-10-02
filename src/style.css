@@ -359,3 +359,12 @@ main > button:disabled { cursor: progress; opacity: .6; }
 .settings .alert { margin-top: 32px; }
 .settings .actions { margin-top: 28px; }
 .settings .actions > button[type="submit"] { color: var(--fg); }
+
+/* ---------- settings: people ---------- */
+.people .person { display: grid; grid-template-columns: minmax(0, 1fr) 200px minmax(0, 1fr); align-items: center; gap: 12px; padding: 10px 0; }
+.person-login { font: 13px var(--mono); overflow-wrap: anywhere; }
+.person select { padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--fg); font: 13px var(--sans); }
+.person-how { display: flex; align-items: center; gap: 10px; }
+.person-how .badge { margin: 0; }
+.person-how .link-btn { font: 12px var(--mono); }
+@media (max-width: 560px) { .people .person { grid-template-columns: 1fr; gap: 6px; } }

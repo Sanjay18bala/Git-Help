@@ -11,6 +11,7 @@ export class SlackError extends Error {}
 
 const FRIENDLY = {
   not_configured: "Slack isn't set up: add SLACK_USER_TOKEN to .env (see README).",
+  bot_not_configured: "The Slack bot isn't set up: add SLACK_BOT_TOKEN to .env (see README).",
   not_authed: 'The Slack token in .env is missing or malformed.',
   invalid_auth: 'The Slack token in .env is invalid. Copy the User OAuth Token again.',
   token_revoked: 'The Slack token in .env was revoked. Reinstall the Slack app and copy the new token.',

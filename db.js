@@ -40,6 +40,11 @@ export function db() {
       title TEXT NOT NULL, url TEXT NOT NULL, labels TEXT NOT NULL, assignees TEXT NOT NULL, author TEXT,
       created_at TEXT NOT NULL, updated_at TEXT NOT NULL, milestone TEXT, due_on TEXT, PRIMARY KEY (repo, number));
 
+    -- GitHub login ↔ Slack user for the bot (bot.js). confirmed = 1: the bot may message them.
+    CREATE TABLE IF NOT EXISTS people (
+      github_login TEXT PRIMARY KEY, slack_user_id TEXT, slack_name TEXT, method TEXT, confidence TEXT,
+      confirmed INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL);
+
     -- Keyword search over chunks, kept in sync by triggers (embedding updates don't touch it).
     CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(title, text, content='chunks', content_rowid='rowid');
     CREATE TRIGGER IF NOT EXISTS chunks_ai AFTER INSERT ON chunks BEGIN
