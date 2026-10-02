@@ -1,11 +1,25 @@
 import {
-  Component, Fragment, StrictMode, createContext, useCallback, useContext, useEffect, useRef, useState,
+  Component, Fragment, StrictMode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
 } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   BrowserRouter, Link, NavLink, Outlet, Route, Routes, useLocation, useNavigate, useParams, useSearchParams,
 } from 'react-router';
 import DOMPurify from 'dompurify';
+import hljs from 'highlight.js/lib/core';
+import hljsBash from 'highlight.js/lib/languages/bash';
+import hljsCss from 'highlight.js/lib/languages/css';
+import hljsGo from 'highlight.js/lib/languages/go';
+import hljsJava from 'highlight.js/lib/languages/java';
+import hljsJs from 'highlight.js/lib/languages/javascript';
+import hljsJson from 'highlight.js/lib/languages/json';
+import hljsMd from 'highlight.js/lib/languages/markdown';
+import hljsPy from 'highlight.js/lib/languages/python';
+import hljsRust from 'highlight.js/lib/languages/rust';
+import hljsSql from 'highlight.js/lib/languages/sql';
+import hljsTs from 'highlight.js/lib/languages/typescript';
+import hljsXml from 'highlight.js/lib/languages/xml';
+import hljsYaml from 'highlight.js/lib/languages/yaml';
 import './style.css';
 
 // "3 days ago"; exact date and time on hover via <time title> where it's rendered as an element.
@@ -1765,6 +1779,97 @@ function DetailSidebar({ item, events, link }) {
   );
 }
 
+// ---------- PR diff ----------
+// Only these languages are bundled (highlight.js/lib/core keeps the build small); other files render plain.
+for (const [name, lang] of Object.entries({ bash: hljsBash, css: hljsCss, go: hljsGo, java: hljsJava, javascript: hljsJs, json: hljsJson,
+  markdown: hljsMd, python: hljsPy, rust: hljsRust, sql: hljsSql, typescript: hljsTs, xml: hljsXml, yaml: hljsYaml })) hljs.registerLanguage(name, lang);
+const LANG_BY_EXT = { js: 'javascript', mjs: 'javascript', cjs: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
+  json: 'json', css: 'css', html: 'xml', xml: 'xml', svg: 'xml', md: 'markdown', py: 'python', go: 'go', rs: 'rust', java: 'java',
+  sh: 'bash', zsh: 'bash', bash: 'bash', yml: 'yaml', yaml: 'yaml', sql: 'sql' };
+const langOf = (path) => LANG_BY_EXT[path.split('.').pop().toLowerCase()];
+
+// highlight.js escapes the source text and only adds <span class="hljs-…">, so its output is safe for innerHTML.
+const highlight = (code, lang) => (lang ? hljs.highlight(code, { language: lang, ignoreIllegals: true }).value
+  : code.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]));
+
+// Unified-diff patch → rows with old/new line numbers. Lines are highlighted one at a time (as on GitHub), so a
+// construct spanning lines, like a block comment, may color imperfectly.
+function parsePatch(patch) {
+  const rows = [];
+  let a = 0;
+  let b = 0;
+  for (const line of patch.split('\n')) {
+    const h = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)/);
+    if (h) { a = Number(h[1]); b = Number(h[2]); rows.push({ type: 'hunk', text: line }); continue; }
+    if (line.startsWith('\\')) continue; // "\ No newline at end of file"
+    const type = line[0] === '+' ? 'add' : line[0] === '-' ? 'del' : 'ctx';
+    rows.push({ type, text: line.slice(1), old: type === 'add' ? null : a++, new: type === 'del' ? null : b++ });
+  }
+  return rows;
+}
+
+function FileDiff({ file, comments }) {
+  const [open, setOpen] = useState(file.status !== 'removed' && (file.changes ?? 0) < 400);
+  const lang = langOf(file.filename);
+  const rows = useMemo(() => (open && file.patch ? parsePatch(file.patch) : []), [open, file.patch]);
+  const at = (r) => (r.type === 'del' ? [] : comments.filter((c) => (c.line ?? c.original_line) === r.new && c.side !== 'LEFT'));
+  const placed = new Set(rows.flatMap((r) => at(r).map((c) => c.id)));
+  return (
+    <div className="file-diff">
+      <button type="button" className="file-head" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <span className="file-chevron">{open ? '▾' : '▸'}</span>
+        <code>{file.previous_filename ? `${file.previous_filename} → ` : ''}{file.filename}</code>
+        <span className="file-stat"><span className="add">+{file.additions}</span> <span className="del">−{file.deletions}</span></span>
+        {file.status !== 'modified' && <span className="badge">{file.status}</span>}
+      </button>
+      {open && (file.patch ? (
+        <table className="diff">
+          <colgroup><col className="ln-col" /><col className="ln-col" /><col /></colgroup>
+          <tbody>
+            {rows.map((r, i) => (r.type === 'hunk'
+              ? <tr key={i} className="diff-hunk"><td colSpan="3">{r.text}</td></tr>
+              : (
+                <Fragment key={i}>
+                  <tr className={`diff-${r.type}`}>
+                    <td className="ln">{r.old ?? ''}</td>
+                    <td className="ln">{r.new ?? ''}</td>
+                    <td className="code"><span className="sign">{{ add: '+', del: '−', ctx: ' ' }[r.type]}</span><span dangerouslySetInnerHTML={{ __html: highlight(r.text, lang) }} /></td>
+                  </tr>
+                  {at(r).map((c) => (
+                    <tr key={c.id} className="diff-comment"><td colSpan="3">
+                      <div className="tl-card">
+                        <div className="tl-head"><b>{c.user?.login}</b> <Time value={c.created_at} /></div>
+                        <Markdown html={c.body_html} />
+                      </div>
+                    </td></tr>
+                  ))}
+                </Fragment>
+              )))}
+          </tbody>
+        </table>
+      ) : <p className="muted diff-none">{file.status === 'renamed' ? 'Renamed without changes.' : 'Binary or too large to show; view it on GitHub.'}</p>)}
+      {open && comments.filter((c) => !placed.has(c.id)).map((c) => (
+        <div key={c.id} className="tl-card diff-outdated">
+          <div className="tl-head"><b>{c.user?.login}</b> <span className="badge">outdated</span> <Time value={c.created_at} /></div>
+          <Markdown html={c.body_html} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PullDiff({ base, n }) {
+  const files = useGitHub(`${base}/pulls/${n}/files?per_page=100`);
+  const comments = useGitHub(`${base}/pulls/${n}/comments?per_page=100`, FULL);
+  if (files.error || !files.data) return <Status error={files.error} data={files.data} />;
+  return (
+    <>
+      {files.data.map((f) => <FileDiff key={f.filename} file={f} comments={(comments.data ?? []).filter((c) => c.path === f.filename)} />)}
+      {files.more && <button className="btn" onClick={files.more}>Load more files</button>}
+    </>
+  );
+}
+
 function Detail({ kind }) {
   const { owner, repo, n } = useParams();
   const base = `repos/${owner}/${repo}`;
@@ -1803,25 +1908,6 @@ function Detail({ kind }) {
             </div>
           </div>
           {!isPR && <LateReasons repo={`${owner}/${repo}`} number={n} />}
-          {isPR && (
-            <>
-              <h3>Files changed</h3>
-              <List path={`${base}/pulls/${n}/files?per_page=100`} render={(f) => (
-                <li key={f.filename}>
-                  <code>{f.filename}</code> <span className="muted">{f.status} · +{f.additions} −{f.deletions}</span>
-                </li>
-              )} />
-              <h3>Review comments</h3>
-              <List path={`${base}/pulls/${n}/comments?per_page=100`} accept={FULL} empty="No inline code comments."
-                render={(c) => (
-                  <li key={c.id}>
-                    <b>{c.user?.login}</b> on <code>{c.path}</code>
-                    <span className="muted">{c.line ?? c.original_line ? `line ${c.line ?? c.original_line} · ` : ''}<Time value={c.created_at} /></span>
-                    <Markdown html={c.body_html} />
-                  </li>
-                )} />
-            </>
-          )}
           <h3>Activity</h3>
           {timeline.error || !timeline.data ? <Status error={timeline.error} data={timeline.data} />
             : timeline.data.length ? <Timeline events={timeline.data} link={link} /> : <p className="muted">No activity yet.</p>}
@@ -1829,6 +1915,12 @@ function Detail({ kind }) {
         </div>
         <DetailSidebar item={item} events={timeline.data} link={link} />
       </div>
+      {isPR && (
+        <>
+          <h3>Files changed <span className="h-count">{item.changed_files}</span></h3>
+          <PullDiff base={base} n={n} />
+        </>
+      )}
     </>
   );
 }

@@ -17,6 +17,9 @@
   --warn: #8a5d00;
   --merged: #8250df;
   --control: #8a8a8a; /* input borders: 3:1 against the page */
+  /* syntax + diff (GitHub's Primer colors); the diff rows are the one place status colors become fills */
+  --syn-keyword: #cf222e; --syn-string: #0a3069; --syn-comment: #6e7781; --syn-fn: #8250df; --syn-const: #0550ae; --syn-var: #953800;
+  --diff-add: rgb(26 127 55 / .12); --diff-del: rgb(207 34 46 / .10); --diff-hunk: rgb(130 80 223 / .08);
   --radius: 0.5rem;
   --sans: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -34,6 +37,8 @@
     --warn: #d29922;
     --merged: #a371f7;
     --control: #666666;
+    --syn-keyword: #ff7b72; --syn-string: #a5d6ff; --syn-comment: #8b949e; --syn-fn: #d2a8ff; --syn-const: #79c0ff; --syn-var: #ffa657;
+    --diff-add: rgb(63 185 80 / .15); --diff-del: rgb(229 72 77 / .15); --diff-hunk: rgb(163 113 247 / .12);
     color-scheme: dark;
   }
 }
@@ -48,6 +53,8 @@
   --warn: #d29922;
   --merged: #a371f7;
   --control: #666666;
+  --syn-keyword: #ff7b72; --syn-string: #a5d6ff; --syn-comment: #8b949e; --syn-fn: #d2a8ff; --syn-const: #79c0ff; --syn-var: #ffa657;
+  --diff-add: rgb(63 185 80 / .15); --diff-del: rgb(229 72 77 / .15); --diff-hunk: rgb(163 113 247 / .12);
   color-scheme: dark;
 }
 
@@ -519,3 +526,32 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; backg
 .palette-empty { padding: var(--s-4) var(--s-3); color: var(--muted); font-size: var(--text-md); }
 .palette-foot { margin: 0; padding: var(--s-2) var(--s-4); border-top: 1px solid var(--border); color: var(--muted); font: var(--text-xs) var(--mono); display: flex; gap: var(--s-1); align-items: center; }
 @media (max-width: 760px) { .search-trigger span { display: none; } .search-trigger { width: auto; margin-left: auto; } }
+
+/* ---------- PR diff ---------- */
+.h-count { margin-left: var(--s-1); padding: 0 var(--s-2); border-radius: var(--radius-full); background: var(--subtle); color: var(--muted); font: var(--text-sm)/20px var(--mono); vertical-align: middle; }
+.file-diff { margin-bottom: var(--s-4); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.file-head { display: flex; align-items: center; gap: var(--s-2); width: 100%; padding: var(--s-2) var(--s-3); border: 0; background: var(--subtle);
+  color: var(--fg); text-align: left; cursor: pointer; font-size: var(--text-md); }
+.file-head code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: none; padding: 0; }
+.file-chevron { width: 12px; color: var(--muted); }
+.file-stat { font: var(--text-sm) var(--mono); }
+.file-head .badge { margin: 0; }
+.diff { width: 100%; border-collapse: collapse; font: 12px/20px var(--mono); table-layout: fixed; }
+.diff td { padding: 0; vertical-align: top; }
+.diff .ln-col { width: 48px; }
+.diff .ln { padding: 0 var(--s-2); color: var(--muted); text-align: right; user-select: none; opacity: .8; }
+.diff .code { padding-right: var(--s-3); white-space: pre-wrap; word-break: break-word; }
+.diff .sign { display: inline-block; width: 20px; padding-left: var(--s-2); color: var(--muted); user-select: none; }
+.diff-add { background: var(--diff-add); } .diff-add .sign { color: var(--ok); }
+.diff-del { background: var(--diff-del); } .diff-del .sign { color: var(--danger); }
+.diff-hunk td { padding: var(--s-1) var(--s-3); background: var(--diff-hunk); color: var(--muted); }
+.diff-comment td { padding: var(--s-2) var(--s-3); background: var(--bg); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); font: var(--text-md)/1.6 var(--sans); }
+.diff-none { padding: var(--s-3); margin: 0; }
+.diff-outdated { margin: var(--s-3); }
+/* syntax colors: highlight.js in diffs, GitHub's own pl-* classes in rendered Markdown code blocks */
+.hljs-keyword, .hljs-built_in, .hljs-type, .hljs-selector-tag, .hljs-meta .hljs-keyword, .pl-k { color: var(--syn-keyword); }
+.hljs-string, .hljs-regexp, .hljs-template-string, .pl-s, .pl-pds, .pl-sr { color: var(--syn-string); }
+.hljs-comment, .hljs-quote, .pl-c { color: var(--syn-comment); font-style: italic; }
+.hljs-title, .hljs-title.function_, .hljs-section, .pl-en { color: var(--syn-fn); }
+.hljs-number, .hljs-literal, .hljs-attr, .hljs-attribute, .hljs-symbol, .hljs-name, .pl-c1, .pl-ent { color: var(--syn-const); }
+.hljs-variable, .hljs-params, .hljs-property, .hljs-template-variable, .pl-v, .pl-smi { color: var(--syn-var); }
