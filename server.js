@@ -26,7 +26,7 @@ const ALLOWED = [
   /^user$/,
   /^user\/repos$/,
   new RegExp(`^${R}(/(readme|languages|contributors|branches|commits|pulls|issues|releases|actions/runs))?$`),
-  new RegExp(`^${R}/(pulls|issues)/\\d+(/(comments|files|reviews))?$`),
+  new RegExp(`^${R}/(pulls|issues)/\\d+(/(comments|files|reviews|timeline))?$`),
 ];
 export const isAllowed = (p) =>
   !p.split('/').some((s) => s === '.' || s === '..') && ALLOWED.some((re) => re.test(p));

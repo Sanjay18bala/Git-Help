@@ -1571,13 +1571,129 @@ function Repo() {
   );
 }
 
+// One line of the activity timeline for events that aren't comments ("added label bug", "mentioned this in #13").
+function eventText(e, link) {
+  const ref = (i) => <Link to={link(i)}>#{i.number} {i.title}</Link>;
+  switch (e.event) {
+    case 'labeled': return <>added {e.labels.map((l) => <Label key={l.name} label={l} />)}</>;
+    case 'unlabeled': return <>removed {e.labels.map((l) => <Label key={l.name} label={l} />)}</>;
+    case 'milestoned': return <>added this to <b>{e.milestone.title}</b></>;
+    case 'demilestoned': return <>removed this from <b>{e.milestone.title}</b></>;
+    case 'assigned': return e.assignee?.login === e.actor?.login ? 'self-assigned this' : <>assigned <b>{e.assignee?.login}</b></>;
+    case 'unassigned': return <>unassigned <b>{e.assignee?.login}</b></>;
+    case 'closed': return e.state_reason === 'not_planned' ? 'closed this as not planned' : <>closed this{e.commit_id && <> in <code>{e.commit_id.slice(0, 7)}</code></>}</>;
+    case 'reopened': return 'reopened this';
+    case 'merged': return <>merged commit <code>{e.commit_id?.slice(0, 7)}</code></>;
+    case 'renamed': return <>changed the title from <s>{e.rename.from}</s></>;
+    case 'cross-referenced': return e.source?.issue ? <>mentioned this in {ref(e.source.issue)}</> : null;
+    case 'referenced': return <>referenced this in commit <code>{e.commit_id?.slice(0, 7)}</code></>;
+    case 'committed': return <>committed <code>{e.sha.slice(0, 7)}</code> {e.message.split('\n')[0]}</>;
+    case 'review_requested': return <>requested a review from <b>{e.requested_reviewer?.login ?? e.requested_team?.name}</b></>;
+    case 'ready_for_review': return 'marked this ready for review';
+    case 'convert_to_draft': return 'marked this as draft';
+    case 'head_ref_deleted': return 'deleted the branch';
+    default: return null; // subscribed, mentioned, etc.: noise
+  }
+}
+
+// GitHub label: a dot in the label's own color, text in ours (label colors are user-picked and often low-contrast).
+const Label = ({ label }) => (
+  <span className="label"><i style={{ background: `#${label.color}` }} />{label.name}</span>
+);
+
+// Back-to-back label changes by the same person in the same minute read as one line, like on GitHub.
+function groupEvents(events) {
+  const out = [];
+  for (const e of events) {
+    const prev = out.at(-1);
+    const at = e.created_at?.slice(0, 16);
+    if (prev && ['labeled', 'unlabeled'].includes(e.event) && prev.event === e.event
+      && prev.actor?.login === e.actor?.login && prev.created_at?.slice(0, 16) === at) {
+      if (!prev.labels.some((l) => l.name === e.label.name)) prev.labels.push(e.label);
+    } else out.push(['labeled', 'unlabeled'].includes(e.event) ? { ...e, labels: [e.label] } : e);
+  }
+  return out;
+}
+
+const REVIEW_STATE = { approved: ['approved these changes', 'ok'], changes_requested: ['requested changes', 'late'], commented: ['reviewed', ''] };
+
+function Timeline({ events, link }) {
+  return (
+    <ol className="timeline">
+      {groupEvents(events).map((e, i) => {
+        const who = e.actor ?? e.user;
+        if (e.event === 'commented' || (e.event === 'reviewed' && e.body_html)) {
+          const [verb, tone] = REVIEW_STATE[e.state] ?? [];
+          return (
+            <li key={e.id ?? i} className="tl-comment">
+              {who && <img className="tl-avatar" src={who.avatar_url} alt="" width="32" height="32" />}
+              <div className="tl-card">
+                <div className="tl-head">
+                  <b>{who?.login}</b> {verb && <span className={`badge ${tone}`}>{verb}</span>} <Time value={e.created_at ?? e.submitted_at} />
+                </div>
+                <Markdown html={e.body_html} />
+              </div>
+            </li>
+          );
+        }
+        if (e.event === 'reviewed') {
+          const [verb, tone] = REVIEW_STATE[e.state] ?? ['reviewed', ''];
+          return <li key={e.id ?? i} className="tl-event"><b>{who?.login}</b> <span className={`badge ${tone}`}>{verb}</span> <Time value={e.submitted_at} /></li>;
+        }
+        const text = eventText(e, link);
+        if (!text) return null;
+        return (
+          <li key={e.id ?? e.sha ?? i} className="tl-event">
+            {who?.avatar_url ? <img src={who.avatar_url} alt="" width="18" height="18" /> : <i className="tl-dot" />}
+            <span>{(who?.login ?? e.author?.name) && <b>{who?.login ?? e.author.name}</b>} {text} <Time value={e.created_at ?? e.author?.date} /></span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+// Right-hand column: who, what, when, and what it's linked to.
+function DetailSidebar({ item, events, link }) {
+  const linked = new Map();
+  for (const e of events ?? []) {
+    const i = e.event === 'cross-referenced' && e.source?.issue;
+    if (i && !linked.has(i.number)) linked.set(i.number, i);
+  }
+  const people = (list) => (list?.length
+    ? list.map((u) => <div key={u.login} className="side-person"><img src={u.avatar_url} alt="" width="20" height="20" />{u.login}</div>)
+    : <span className="muted">None</span>);
+  return (
+    <aside className="detail-side">
+      <section><h4>Assignees</h4>{people(item.assignees)}</section>
+      {item.requested_reviewers && <section><h4>Reviewers</h4>{people(item.requested_reviewers)}</section>}
+      <section>
+        <h4>Labels</h4>
+        {item.labels?.length ? <div className="side-labels">{item.labels.map((l) => <Label key={l.name} label={l} />)}</div> : <span className="muted">None</span>}
+      </section>
+      <section>
+        <h4>Milestone</h4>
+        {item.milestone ? <><div>{item.milestone.title}</div><div className="muted">{item.milestone.due_on ? `due ${shortDay(item.milestone.due_on.slice(0, 10))}` : 'no due date'} <DueBadge item={item} /></div></> : <span className="muted">None</span>}
+      </section>
+      <section>
+        <h4>Linked</h4>
+        {linked.size ? [...linked.values()].map((i) => (
+          <div key={i.number} className="side-link"><StateIcon item={i} /><Link to={link(i)}>#{i.number} {i.title}</Link></div>
+        )) : <span className="muted">{events ? 'Nothing linked' : '…'}</span>}
+      </section>
+    </aside>
+  );
+}
+
 function Detail({ kind }) {
   const { owner, repo, n } = useParams();
   const base = `repos/${owner}/${repo}`;
   const { data: item, error } = useGitHub(`${base}/${kind}/${n}`, FULL);
+  const timeline = useGitHub(`${base}/issues/${n}/timeline?per_page=100`, FULL);
   useTitle(item ? `#${item.number} ${item.title} · ${owner}/${repo}` : `#${n} · ${owner}/${repo}`);
   if (error || !item) return <Status error={error} data={item} />;
   const isPR = kind === 'pulls';
+  const link = (i) => `/repos/${owner}/${repo}/${i.pull_request ? 'pulls' : 'issues'}/${i.number}`;
   const status = item.merged ? 'merged'
     : item.draft ? 'draft'
     : item.state === 'closed' && item.state_reason === 'not_planned' ? 'not planned'
@@ -1586,53 +1702,53 @@ function Detail({ kind }) {
     <>
       <p className="kicker"><Link to={`/repos/${owner}/${repo}/${kind}`}>← {owner}/{repo}</Link></p>
       <h1>{item.title} <span className="num">#{n}</span></h1>
-      <p className="kicker">
-        <span className={`badge status-${status.replace(' ', '-')}`}>{status}</span><DueBadge item={item} /> opened by{' '}
-        {item.user?.login} <Time value={item.created_at} /> · <Ext href={item.html_url}>view on github ↗</Ext>
+      <p className="detail-meta">
+        <span className={`badge status-${status.replace(' ', '-')}`}>{status}</span>
+        <span><b>{item.user?.login}</b> opened this <Time value={item.created_at} /> · {plural(item.comments, 'comment')}</span>
+        <Ext href={item.html_url}>view on github ↗</Ext>
       </p>
-      {item.milestone && <p className="kicker">milestone {milestoneText(item.milestone)}</p>}
       {isPR && (
         <p className="kicker">
           <code>{item.head.ref}</code> → <code>{item.base.ref}</code> · {plural(item.commits, 'commit')} ·{' '}
-          {plural(item.changed_files, 'file')} · +{item.additions} −{item.deletions}
+          {plural(item.changed_files, 'file')} · <span className="add">+{item.additions}</span> <span className="del">−{item.deletions}</span>
         </p>
       )}
-      <Markdown html={item.body_html} empty="No description." />
-      {!isPR && <LateReasons repo={`${owner}/${repo}`} number={n} />}
-      {isPR && (
-        <>
-          <h3>Files changed</h3>
-          <List path={`${base}/pulls/${n}/files?per_page=100`} render={(f) => (
-            <li key={f.filename}>
-              <code>{f.filename}</code> <span className="muted">{f.status} · +{f.additions} −{f.deletions}</span>
-            </li>
-          )} />
-          <h3>Reviews</h3>
-          <List path={`${base}/pulls/${n}/reviews`} accept={FULL} empty="No reviews yet." render={(r) => (
-            <li key={r.id}>
-              <b>{r.user?.login}</b> <span className={`badge ${{ APPROVED: 'ok', CHANGES_REQUESTED: 'late' }[r.state] ?? ''}`}>{r.state.replace('_', ' ').toLowerCase()}</span>
-              <span className="muted">{date(r.submitted_at)}</span>
-              <Markdown html={r.body_html} />
-            </li>
-          )} />
-          <h3>Review comments</h3>
-          <List path={`${base}/pulls/${n}/comments?per_page=100`} accept={FULL} empty="No inline code comments."
-            render={(c) => (
-              <li key={c.id}>
-                <b>{c.user?.login}</b> on <code>{c.path}</code>
-                <span className="muted">{c.line ?? c.original_line ? `line ${c.line ?? c.original_line} · ` : ''}{date(c.created_at)}</span>
-                <Markdown html={c.body_html} />
-              </li>
-            )} />
-        </>
-      )}
-      <h3>Comments</h3>
-      <List path={`${base}/issues/${n}/comments?per_page=100`} accept={FULL} empty="No comments yet." render={(c) => (
-        <li key={c.id}>
-          <b>{c.user?.login}</b> <span className="muted">{date(c.created_at)}</span>
-          <Markdown html={c.body_html} />
-        </li>
-      )} />
+      <div className="detail">
+        <div className="detail-main">
+          <div className="tl-comment">
+            <img className="tl-avatar" src={item.user?.avatar_url} alt="" width="32" height="32" />
+            <div className="tl-card">
+              <div className="tl-head"><b>{item.user?.login}</b> <Time value={item.created_at} /></div>
+              <Markdown html={item.body_html} empty="No description provided." />
+            </div>
+          </div>
+          {!isPR && <LateReasons repo={`${owner}/${repo}`} number={n} />}
+          {isPR && (
+            <>
+              <h3>Files changed</h3>
+              <List path={`${base}/pulls/${n}/files?per_page=100`} render={(f) => (
+                <li key={f.filename}>
+                  <code>{f.filename}</code> <span className="muted">{f.status} · +{f.additions} −{f.deletions}</span>
+                </li>
+              )} />
+              <h3>Review comments</h3>
+              <List path={`${base}/pulls/${n}/comments?per_page=100`} accept={FULL} empty="No inline code comments."
+                render={(c) => (
+                  <li key={c.id}>
+                    <b>{c.user?.login}</b> on <code>{c.path}</code>
+                    <span className="muted">{c.line ?? c.original_line ? `line ${c.line ?? c.original_line} · ` : ''}<Time value={c.created_at} /></span>
+                    <Markdown html={c.body_html} />
+                  </li>
+                )} />
+            </>
+          )}
+          <h3>Activity</h3>
+          {timeline.error || !timeline.data ? <Status error={timeline.error} data={timeline.data} />
+            : timeline.data.length ? <Timeline events={timeline.data} link={link} /> : <p className="muted">No activity yet.</p>}
+          {timeline.more && <button className="btn" onClick={timeline.more}>Load more</button>}
+        </div>
+        <DetailSidebar item={item} events={timeline.data} link={link} />
+      </div>
     </>
   );
 }
