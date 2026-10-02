@@ -27,6 +27,9 @@ const CASES = [
   // Counting needs the overview source; brewlog has issues #2 #3 #6 #8 #14 and PRs #13 #15 open.
   { q: 'How many open issues are there?', expect: /overview/, answer: /\b5\b|\bfive\b/i },
   { q: 'How many open pull requests are there?', expect: /overview/, answer: /\b2\b|\btwo\b/i },
+  // Deadlines come from milestone due dates (demo: v0.3.0 was due Sep 29 with #14, #8, #6; v0.4.0 due Oct 15).
+  { q: 'Which issues are overdue?', expect: /overview/, answer: /(?=[\s\S]*#14)(?=[\s\S]*#8)(?=[\s\S]*#6)/ },
+  { q: "What's due in the next couple of weeks?", expect: /overview/, answer: /#3|#2|v0\.4\.0|Oct(ober)? 15|10-15/i },
   // Small talk and general questions: answered naturally, no citations, no "sources" talk.
   { q: 'hello, how are you?', cite: false, answer: /^(?![\s\S]*(provided sources|pull request))/i },
   { q: 'What is the difference between git merge and git rebase?', cite: false, answer: /rebase/i },

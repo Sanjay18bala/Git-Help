@@ -16,6 +16,11 @@ assert(rag.split('y'.repeat(1200), 500).every((p) => p.length <= 500), 'over-lon
 assert.equal(rag.ftsQuery('Why did we drop SQLite? (#9) "quotes"'), '"drop" OR "sqlite" OR "quotes"');
 assert.equal(rag.ftsQuery('what is it'), ''); // only stopwords: no keyword search
 assert.deepEqual(rag.rrf([['a', 'b', 'c'], ['c', 'a']]), ['a', 'c', 'b']);
+// Deadlines are calendar dates: whole days, no timezone drift.
+assert.equal(rag.daysLate('2026-09-29', '2026-10-01'), 2);
+assert.equal(rag.daysLate('2026-10-01', '2026-10-01'), 0);
+assert.equal(rag.daysLate('2026-10-15', '2026-10-01'), -14);
+assert.equal(rag.localDate(new Date(2026, 0, 5, 23, 30)), '2026-01-05');
 
 // --- fake Slack, GitHub and Ollama ---
 // Embeddings: a bag-of-words hash, so texts sharing words are close.
@@ -49,6 +54,12 @@ globalThis.fetch = async (url, init = {}) => {
         { number: 9, title: 'Storage: JSON or SQLite?', state: 'closed', state_reason: 'completed', body: 'Is rewriting brews.json a problem?',
           user: { login: 'sanjay' }, labels: [{ name: 'question' }], assignees: [], comments: 1,
           created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-02T00:00:00Z', html_url: 'https://github.com/o/brewlog/issues/9' },
+        { number: 14, title: 'CSV export breaks on commas', state: 'open', body: 'Quote fields.', user: { login: 'sanjay' },
+          labels: [{ name: 'bug' }], assignees: [{ login: 'priya' }], comments: 0, milestone: { title: 'v0.3.0', due_on: '2020-01-01T00:00:00Z' },
+          created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-02T00:00:00Z', html_url: 'https://github.com/o/brewlog/issues/14' },
+        { number: 3, title: 'Colorize list', state: 'open', body: '', user: { login: 'sanjay' }, labels: [], assignees: [], comments: 0,
+          milestone: { title: 'v0.4.0', due_on: `${rag.localDate(new Date(Date.now() + 3 * 86_400_000))}T00:00:00Z` },
+          created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-02T00:00:00Z', html_url: 'https://github.com/o/brewlog/issues/3' },
         { number: 16, title: 'experiment: SQLite storage backend', state: 'closed', body: 'Spike.', draft: false,
           pull_request: { merged_at: null }, user: { login: 'sanjay' }, labels: [], assignees: [], comments: 0,
           created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-02T00:00:00Z', html_url: 'https://github.com/o/brewlog/pull/16' },
@@ -88,17 +99,25 @@ assert(calls.embedTexts.every((t) => t.startsWith('search_document: ')), 'nomic 
 
 await rag.indexGithub('o/brewlog', 'gh-token');
 const ghIds = d.prepare("SELECT id FROM chunks WHERE source = 'github' ORDER BY id").all().map((r) => r.id);
-assert.deepEqual(ghIds, ['gh:o/brewlog:#16', 'gh:o/brewlog:#9', 'gh:o/brewlog:#9:comments:0', 'gh:o/brewlog:readme:0']);
+assert.deepEqual(ghIds, ['gh:o/brewlog:#14', 'gh:o/brewlog:#16', 'gh:o/brewlog:#3', 'gh:o/brewlog:#9', 'gh:o/brewlog:#9:comments:0', 'gh:o/brewlog:readme:0']);
+assert.match(d.prepare("SELECT text FROM chunks WHERE id = 'gh:o/brewlog:#14'").get().text, /Milestone: v0\.3\.0, due 2020-01-01\./);
 assert.match(d.prepare("SELECT text FROM chunks WHERE id = 'gh:o/brewlog:#16'").get().text, /State: closed\./);
 
 // Items table + overview: exact counts that retrieval alone can't give.
-assert.deepEqual(d.prepare("SELECT number, kind, state FROM items WHERE repo = 'o/brewlog' ORDER BY number").all().map((r) => ({ ...r })),
-  [{ number: 9, kind: 'issue', state: 'closed' }, { number: 16, kind: 'pr', state: 'closed' }]);
+assert.deepEqual(d.prepare("SELECT number, kind, state, due_on FROM items WHERE repo = 'o/brewlog' ORDER BY number").all().map((r) => ({ ...r })), [
+  { number: 3, kind: 'issue', state: 'open', due_on: rag.localDate(new Date(Date.now() + 3 * 86_400_000)) },
+  { number: 9, kind: 'issue', state: 'closed', due_on: null },
+  { number: 14, kind: 'issue', state: 'open', due_on: '2020-01-01' },
+  { number: 16, kind: 'pr', state: 'closed', due_on: null },
+]);
 const overview = rag.repoOverview('o/brewlog');
-assert.match(overview.text, /Total: 1 issues and 1 pull requests\./);
-assert.match(overview.text, /Open issues: 0\./);
-assert.match(overview.text, /Closed issues: 1 \(#9 Storage: JSON or SQLite\? \[question\]\)\./);
-assert.match(overview.text, /Closed pull requests that were not merged: 1 \(#16 experiment: SQLite storage backend\)\./);
+assert.match(overview.text, new RegExp(`Today is ${rag.localDate()}\\.`));
+assert.match(overview.text, /- open issues: 2\n- open pull requests: 0\n- overdue \(open, past their milestone due date\): 1\n- upcoming deadlines \(open, due today or later\): 1\n/);
+assert.match(overview.text, /- all issues ever, open and closed: 3\n- all pull requests ever, open and closed: 1/);
+assert.match(overview.text, /Overdue:\n- #14 CSV export breaks on commas \(issue; labels: bug; assigned to priya; milestone v0\.3\.0, due 2020-01-01, \d+ days late\)/);
+assert.match(overview.text, /Upcoming deadlines:\n- #3 Colorize list \(issue; milestone v0\.4\.0, due \d{4}-\d\d-\d\d, in 3 days\)/);
+assert.match(overview.text, /Closed issues:\n- #9 Storage: JSON or SQLite\? \(issue; labels: question\)/);
+assert.match(overview.text, /Closed pull requests that were not merged:\n- #16 experiment: SQLite storage backend \(pull request\)/);
 assert.equal(rag.repoOverview('nobody/none'), null);
 
 // Another repo's data, which repo scope must never return.

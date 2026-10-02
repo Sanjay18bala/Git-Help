@@ -158,6 +158,9 @@ main > button:disabled { cursor: progress; opacity: .6; }
 }
 .badge.merged, .status-merged, .status-open { color: var(--fg); border-color: var(--fg); }
 .kicker .badge { margin: 0 6px 0 0; }
+.badge.late { color: var(--danger); border-color: var(--danger); }
+.badge.soon { color: var(--fg); border-color: var(--fg); }
+.kicker .badge + .badge { margin-left: 0; }
 .muted { color: var(--muted); }
 .error { font: 13px var(--mono); color: var(--danger); }
 

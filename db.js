@@ -38,7 +38,7 @@ export function db() {
     CREATE TABLE IF NOT EXISTS items (
       repo TEXT NOT NULL, number INTEGER NOT NULL, kind TEXT NOT NULL, state TEXT NOT NULL, draft INTEGER NOT NULL,
       title TEXT NOT NULL, url TEXT NOT NULL, labels TEXT NOT NULL, assignees TEXT NOT NULL, author TEXT,
-      created_at TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (repo, number));
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL, milestone TEXT, due_on TEXT, PRIMARY KEY (repo, number));
 
     -- Keyword search over chunks, kept in sync by triggers (embedding updates don't touch it).
     CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(title, text, content='chunks', content_rowid='rowid');
@@ -53,5 +53,10 @@ export function db() {
       INSERT INTO chunks_fts (rowid, title, text) VALUES (new.rowid, new.title, new.text);
     END;
   `);
+  // Columns added after a table first shipped: add them to existing databases.
+  const has = (table, col) => database.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col);
+  for (const [col, type] of [['milestone', 'TEXT'], ['due_on', 'TEXT']]) {
+    if (!has('items', col)) database.exec(`ALTER TABLE items ADD COLUMN ${col} ${type}`);
+  }
   return database;
 }

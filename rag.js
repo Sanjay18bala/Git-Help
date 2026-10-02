@@ -14,6 +14,12 @@ const REFRESH_MINUTES = 10; // re-fetch a repo's issues and PRs before answering
 
 export class RagError extends Error {}
 
+// Milestone due dates are calendar dates (GitHub stores them as midnight UTC), so compare date parts, never
+// timestamps: as a timestamp, "due Sep 29" would already be Sep 28 in America/Phoenix.
+export const localDate = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+export const daysLate = (due, today = localDate()) => Math.round((Date.parse(today) - Date.parse(due)) / 86_400_000);
+
 const sha = (s) => createHash('sha1').update(s).digest('hex');
 
 // Long text → pieces of at most `max` chars on line boundaries, carrying one line of overlap when it fits.
@@ -122,12 +128,14 @@ export async function githubChunks(repo, token) {
       draft: it.draft ? 1 : 0, title: it.title, url: it.html_url, labels: it.labels.map((l) => l.name).join(', '),
       assignees: (it.assignees ?? []).map((a) => a.login).join(', '), author: it.user?.login ?? null,
       created_at: it.created_at, updated_at: it.updated_at,
+      milestone: it.milestone?.title ?? null, due_on: it.milestone?.due_on?.slice(0, 10) ?? null,
     });
     const facts = [
       `State: ${state}${it.draft ? ' (draft)' : ''}.`,
       `Opened by ${it.user?.login ?? 'unknown'} on ${it.created_at.slice(0, 10)}.`,
       it.labels.length ? `Labels: ${it.labels.map((l) => l.name).join(', ')}.` : '',
       it.assignees?.length ? `Assigned to ${it.assignees.map((a) => a.login).join(', ')}.` : '',
+      it.milestone ? `Milestone: ${it.milestone.title}${it.milestone.due_on ? `, due ${it.milestone.due_on.slice(0, 10)}` : ''}.` : '',
     ].filter(Boolean).join(' ');
     const base = `gh:${repo}:#${it.number}`;
     const title = `${repo} ${kind} #${it.number}: ${it.title}`;
@@ -216,12 +224,14 @@ export const indexGithub = (repo, token) => serial(async () => {
   const { docs, items } = await githubChunks(repo, token);
   store(docs, 'repo = ?', [repo]);
   const d = db();
-  const insert = d.prepare('INSERT INTO items VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  const insert = d.prepare(`INSERT INTO items (repo, number, kind, state, draft, title, url, labels, assignees, author,
+    created_at, updated_at, milestone, due_on) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   d.exec('BEGIN');
   try {
     d.prepare('DELETE FROM items WHERE repo = ?').run(repo);
     for (const i of items) {
-      insert.run(repo, i.number, i.kind, i.state, i.draft, i.title, i.url, i.labels, i.assignees, i.author, i.created_at, i.updated_at);
+      insert.run(repo, i.number, i.kind, i.state, i.draft, i.title, i.url, i.labels, i.assignees, i.author, i.created_at,
+        i.updated_at, i.milestone, i.due_on);
     }
     d.prepare('INSERT INTO indexed_repos VALUES (?, ?) ON CONFLICT (repo) DO UPDATE SET indexed_at = excluded.indexed_at')
       .run(repo, new Date().toISOString());
@@ -351,26 +361,57 @@ export function repoOverview(repo, perGroup = 25) {
   const items = d.prepare('SELECT * FROM items WHERE repo = ? ORDER BY number DESC').all(repo);
   if (!items.length) return null;
   const at = d.prepare('SELECT indexed_at FROM indexed_repos WHERE repo = ?').get(repo)?.indexed_at;
+  const today = localDate();
+  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
   const of = (kind, state) => items.filter((i) => i.kind === kind && i.state === state);
-  const list = (rows) => rows.slice(0, perGroup).map((i) => `#${i.number} ${i.title}`
-    + (i.draft ? ' (draft)' : '') + (i.labels ? ` [${i.labels}]` : '') + (i.assignees ? ` (assigned to ${i.assignees})` : ''))
-    .join('; ') + (rows.length > perGroup ? `; and ${rows.length - perGroup} more` : '');
-  const groups = [
-    ['Open issues', of('issue', 'open')],
-    ['Open pull requests', of('pr', 'open')],
-    ['Closed issues', of('issue', 'closed')],
-    ['Merged pull requests', of('pr', 'merged')],
-    ['Closed pull requests that were not merged', of('pr', 'closed')],
-  ];
+  const kindOf = (i) => (i.kind === 'pr' ? 'pull request' : 'issue');
+  const line = (i, extra = '') => `- #${i.number} ${i.title} (${kindOf(i)}${i.draft ? ', draft' : ''}`
+    + `${i.labels ? `; labels: ${i.labels}` : ''}${i.assignees ? `; assigned to ${i.assignees}` : ''}${extra})`;
+  const section = (heading, rows, extra) => (rows.length
+    ? [`${heading}:`, ...rows.slice(0, perGroup).map((i) => line(i, extra?.(i))),
+      ...(rows.length > perGroup ? [`- and ${rows.length - perGroup} more`] : [])]
+    : []);
+  const byDue = (a, b) => a.due_on.localeCompare(b.due_on);
+  const dated = items.filter((i) => i.state === 'open' && i.due_on);
+  const overdue = dated.filter((i) => daysLate(i.due_on, today) > 0).sort(byDue);
+  const upcoming = dated.filter((i) => daysLate(i.due_on, today) <= 0).sort(byDue);
+  const due = (i) => `; milestone ${i.milestone}, due ${i.due_on}`;
+  const late = (i) => `${due(i)}, ${plural(daysLate(i.due_on, today), 'day')} late`;
+  const until = (i) => {
+    const n = -daysLate(i.due_on, today);
+    return `${due(i)}, ${n === 0 ? 'due today' : `in ${plural(n, 'day')}`}`;
+  };
+  const openIssues = of('issue', 'open');
+  const openPRs = of('pr', 'open');
+
+  // Small models misread long mixed lines (e.g. a total as an open count), so: labelled counts first, one per
+  // line, then one item per line.
   const text = [
-    `Overview of ${repo} from GitHub as of ${at?.slice(0, 16).replace('T', ' ')} UTC`
-      + `${items.length >= MAX_ITEMS ? `, covering only the ${MAX_ITEMS} most recently updated issues and pull requests` : ''}:`,
-    `Total: ${items.filter((i) => i.kind === 'issue').length} issues and ${items.filter((i) => i.kind === 'pr').length} pull requests.`,
-    ...groups.map(([label, rows]) => `${label}: ${rows.length}${rows.length ? ` (${list(rows)})` : ''}.`),
+    `Overview of ${repo} from GitHub as of ${at?.slice(0, 16).replace('T', ' ')} UTC. Today is ${today}.`
+      + `${items.length >= MAX_ITEMS ? ` Covers only the ${MAX_ITEMS} most recently updated issues and pull requests.` : ''}`,
+    '',
+    'Counts:',
+    `- open issues: ${openIssues.length}`,
+    `- open pull requests: ${openPRs.length}`,
+    `- overdue (open, past their milestone due date): ${overdue.length}`,
+    `- upcoming deadlines (open, due today or later): ${upcoming.length}`,
+    `- closed issues: ${of('issue', 'closed').length}`,
+    `- merged pull requests: ${of('pr', 'merged').length}`,
+    `- closed pull requests that were not merged: ${of('pr', 'closed').length}`,
+    `- all issues ever, open and closed: ${items.filter((i) => i.kind === 'issue').length}`,
+    `- all pull requests ever, open and closed: ${items.filter((i) => i.kind === 'pr').length}`,
+    '',
+    ...section('Overdue', overdue, late),
+    ...section('Upcoming deadlines', upcoming, until),
+    ...section('Open issues', openIssues, (i) => (i.due_on ? due(i) : '')),
+    ...section('Open pull requests', openPRs, (i) => (i.due_on ? due(i) : '')),
+    ...section('Closed issues', of('issue', 'closed')),
+    ...section('Merged pull requests', of('pr', 'merged')),
+    ...section('Closed pull requests that were not merged', of('pr', 'closed')),
   ].join('\n');
   return {
     id: `overview:${repo}`, source: 'github', repo, text, url: `https://github.com/${repo}/issues`,
-    title: `${repo} overview: open and closed issues and pull requests`,
+    title: `${repo} overview: open, closed and overdue issues and pull requests`,
   };
 }
 

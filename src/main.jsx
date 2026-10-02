@@ -10,6 +10,30 @@ import './style.css';
 
 const date = (s) => (s ? new Date(s).toLocaleDateString() : '');
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+// Milestone due dates are calendar dates (GitHub stores them as midnight UTC), so compare date parts: as a
+// timestamp, "due Sep 29" would show as Sep 28 west of UTC. Same rule as daysLate() in rag.js.
+const localDay = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+const shortDay = (ymd) => new Date(`${ymd}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+function deadline(item) {
+  const due = item.milestone?.due_on?.slice(0, 10);
+  if (!due || item.state !== 'open') return null; // closed work isn't late
+  const late = Math.round((Date.parse(localDay()) - Date.parse(due)) / 86_400_000);
+  return {
+    late,
+    text: late > 0 ? `overdue ${late}d` : late === 0 ? 'due today' : `due ${shortDay(due)}`,
+    title: `${item.milestone.title}: due ${shortDay(due)}`,
+  };
+}
+function DueBadge({ item }) {
+  const d = deadline(item);
+  if (!d) return null;
+  return <span className={`badge${d.late > 0 ? ' late' : d.late >= -2 ? ' soon' : ''}`} title={d.title}>{d.text}</span>;
+}
+const milestoneText = (m) => (m ? `${m.title}${m.due_on ? ` (due ${shortDay(m.due_on.slice(0, 10))})` : ''}` : '');
 const dateTime = (s) => (s ? new Date(s).toLocaleString() : 'never');
 const slackTime = (ts) => new Date(Number(ts) * 1000).toLocaleString();
 
@@ -1010,7 +1034,8 @@ function Repo() {
           <Link to={to(`pulls/${p.number}`)}>#{p.number} {p.title}</Link>
           {p.draft && <span className="badge">draft</span>}
           {p.merged_at ? <span className="badge merged">merged</span> : p.state === 'closed' && <span className="badge">closed</span>}
-          <span className="muted">{p.user?.login} · {p.head.ref} → {p.base.ref} · {date(p.created_at)}</span>
+          <DueBadge item={p} />
+          <span className="muted">{p.user?.login} · {p.head.ref} → {p.base.ref} · {date(p.created_at)}{p.milestone && ` · ${milestoneText(p.milestone)}`}</span>
         </li>
       )} />
     ),
@@ -1021,9 +1046,11 @@ function Repo() {
         <li key={i.id}>
           <Link to={to(`issues/${i.number}`)}>#{i.number} {i.title}</Link>
           {i.state === 'closed' && <span className="badge">{i.state_reason === 'not_planned' ? 'not planned' : 'closed'}</span>}
+          <DueBadge item={i} />
           {i.labels.map((l) => <span key={l.id} className="badge">{l.name}</span>)}
           <span className="muted">
             {i.user?.login} · {date(i.created_at)} · {plural(i.comments, 'comment')}
+            {i.milestone && ` · ${milestoneText(i.milestone)}`}
             {i.assignees.length > 0 && ` · assigned to ${i.assignees.map((a) => a.login).join(', ')}`}
           </span>
         </li>
@@ -1108,9 +1135,10 @@ function Detail({ kind }) {
       <p className="kicker"><Link to={`/repos/${owner}/${repo}/${kind}`}>← {owner}/{repo}</Link></p>
       <h1>{item.title} <span className="num">#{n}</span></h1>
       <p className="kicker">
-        <span className={`badge status-${status.replace(' ', '-')}`}>{status}</span> opened by {item.user?.login} on{' '}
-        {date(item.created_at)} · <Ext href={item.html_url}>view on github ↗</Ext>
+        <span className={`badge status-${status.replace(' ', '-')}`}>{status}</span><DueBadge item={item} /> opened by{' '}
+        {item.user?.login} on {date(item.created_at)} · <Ext href={item.html_url}>view on github ↗</Ext>
       </p>
+      {item.milestone && <p className="kicker">milestone {milestoneText(item.milestone)}</p>}
       {isPR && (
         <p className="kicker">
           <code>{item.head.ref}</code> → <code>{item.base.ref}</code> · {plural(item.commits, 'commit')} ·{' '}
