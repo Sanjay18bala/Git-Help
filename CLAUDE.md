@@ -56,6 +56,13 @@ A read-only GitHub dashboard: Express backend + React SPA, both served by one Vi
 - **Replies**: Socket Mode (`SLACK_APP_TOKEN`, Node's built-in WebSocket) receives `message.im`; `recordReply()` maps a reply to its alert by `thread_ts`, else the latest alert in that DM, stores a `followups` row, thanks the user, and `indexFollowups()` makes it a chunk (`followup:` ids, excluded from GitHub re-indexing). `repoOverview()` adds the latest reason to each overdue line and precomputed "with a reason / no reason yet" counts (the 4B model misread the per-line text).
 - **Background**: `startBackground()` (called from vite.config) runs a 15-minute check + the socket. It lives on `globalThis.__gitHelpAlerts` and a new start stops the old one, because Vite restarts re-import the module and old timers/sockets would otherwise keep running and double-send. It uses the signed-in user's GitHub token stored sealed in `settings` (`github`), saved on login/any authenticated request and deleted on sign-out.
 
+### Attention dashboard and chat accuracy rules
+
+- **Overview tab** = `Attention` (from `rag.attention()` via `/api/attention`, local index only; first visit indexes the repo): count tiles, a one-line `attentionSentence()`, overdue items with their latest reason or an "ask why" button (dispatches `git-help:ask`, which opens the chat and sends the question), due-soon items, PRs. The repo list shows per-repo overdue badges (`/api/attention/summary`).
+- **Named issues**: when a question mentions `#N`, `issueFacts()` adds an exact fact sheet per issue as the first sources and the overview plus other issues' `followup:` chunks are left out. gemma3:4b otherwise attributed #6's reason to #8 even when told not to; removing the material worked where instructions didn't.
+- **Dates**: deadlines (`due_on`) are calendar dates; event times (`sent_at`, `created_at`) are timestamps shown as the *local* date (`localDayOf`). Mixing them made "asked on Oct 2" appear before "today is Oct 1".
+- **Tabs**: six top-level tabs; `code` groups commits/branches/releases/contributors (`CODE_TABS`), whose old URLs still work. The chat panel can be hidden (persisted in localStorage `chat`); `/` opens and focuses it (`git-help:focus`).
+
 ### `useGitHub(path, accept)` — the one data hook; its details matter
 
 - State is tagged with a `key` (`accept + path`) and only returned when it matches the current request. This prevents a reused component (e.g. `List` across repo tabs) from rendering the previous tab's data with the new tab's renderer — that previously crashed the whole app (blank page). Keep this when touching the hook.

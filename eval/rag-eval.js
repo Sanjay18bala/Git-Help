@@ -32,6 +32,8 @@ const CASES = [
   { q: "What's due in the next couple of weeks?", expect: /overview/, answer: /#3|#2|v0\.4\.0|Oct(ober)? 15|10-15/i },
   // Reasons people gave the Git-Help bot (demo: Sanjay18bala replied "I was sick" about #6).
   { q: "Why isn't #6 done yet?", answer: /sick/i },
+  // #8 has no reason yet: it must not borrow #6's "I was sick" (the model once did).
+  { q: "Why isn't #8 done yet?", answer: /^(?![\s\S]*\bsick\b)[\s\S]*(no reason|not (been )?given|no reply|workflow|scope)/i },
   { q: 'Which overdue issues still have no reason from the assignee?', expect: /overview/, answer: /^(?=[\s\S]*#14)(?=[\s\S]*#8)(?![\s\S]*#6\b[^\n]*(no reason|not given))/ },
   // Small talk and general questions: answered naturally, no citations, no "sources" talk.
   { q: 'hello, how are you?', cite: false, answer: /^(?![\s\S]*(provided sources|pull request))/i },

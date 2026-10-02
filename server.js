@@ -256,7 +256,22 @@ api.post('/alerts/send', async (req, res) => {
   await rag.indexGithub(repo, req.token); // decide on fresh states and due dates
   res.json({ sent: (await alerts.sendAlerts()).filter((a) => a.repo === repo) });
 });
+// Needs-attention data for a repo's Overview tab. Indexes on first visit; works without the chat models.
+api.get('/attention', async (req, res) => {
+  const repo = repoParam(req.query.repo);
+  if (!db().prepare('SELECT 1 FROM items WHERE repo = ?').get(repo)) {
+    await rag.indexGithub(repo, req.token).catch(() => {}); // e.g. Ollama down: items still get stored first
+  }
+  res.json(rag.attention(repo));
+});
+api.get('/attention/summary', (req, res) => res.json(rag.attentionSummary()));
+
 api.get('/followups', (req, res) => {
+  if (req.query.number === undefined) { // latest reason per issue, for list rows
+    const repo = repoParam(req.query.repo);
+    return res.json(db().prepare(`SELECT number, github_login, text, created_at FROM followups f WHERE repo = ?
+      AND created_at = (SELECT MAX(created_at) FROM followups g WHERE g.repo = f.repo AND g.number = f.number)`).all(repo));
+  }
   const number = Number(req.query.number);
   if (!Number.isInteger(number) || number < 1) throw Object.assign(new Error('Invalid number'), { status: 400 });
   res.json(alerts.followupsFor(repoParam(req.query.repo), number));

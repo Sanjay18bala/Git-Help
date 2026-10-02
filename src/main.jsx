@@ -550,9 +550,9 @@ function ChatPanel({ repo, open, onClose }) {
     log.current?.scrollTo({ top: log.current.scrollHeight });
   }, [messages.length, last?.text, last?.status]);
 
-  const send = async (e) => {
+  const send = async (e, question) => {
     e?.preventDefault();
-    const q = text.trim();
+    const q = (question ?? text).trim();
     if (!q || busy) return;
     const k = key; // the user may switch repos while this answer streams
     const history = [...messages.filter((m) => m.text.trim() && !m.error), { role: 'user', text: q }];
@@ -581,6 +581,17 @@ function ChatPanel({ repo, open, onClose }) {
       setBusy(false);
     }
   };
+
+  // Latest send() for the window events below (they're registered once).
+  const sendRef = useRef(send);
+  sendRef.current = send;
+  useEffect(() => {
+    const focus = () => input.current?.focus();
+    const ask = (e) => { sendRef.current(null, e.detail); focus(); };
+    window.addEventListener('git-help:focus', focus);
+    window.addEventListener('git-help:ask', ask);
+    return () => { window.removeEventListener('git-help:focus', focus); window.removeEventListener('git-help:ask', ask); };
+  }, []);
 
   return (
     <aside className="chat" data-open={open} aria-label="Chat">
@@ -649,7 +660,7 @@ function ChatPanel({ repo, open, onClose }) {
             <button type="submit" className="send" disabled={!text.trim()} aria-label="Send"><ArrowUp /></button>
           )}
         </div>
-        <p className="composer-hint">enter to send · shift+enter for a new line</p>
+        <p className="composer-hint">enter to send · shift+enter for a new line · / to jump here</p>
       </form>
     </aside>
   );
@@ -762,7 +773,25 @@ function Layout() {
   const { data: me } = useGitHub('user');
   const slack = useSlackState();
   const llm = useLlmSettings();
-  const [chatOpen, setChatOpen] = useState(false); // only matters on narrow screens; wide screens always show it
+  const [chatOpen, setChatOpen] = useState(false); // narrow screens: the chat overlay
+  const [chatHidden, setChatHidden] = useState(() => { try { return localStorage.getItem('chat') === 'hidden'; } catch { return false; } });
+  const showChat = useCallback((hidden) => {
+    setChatHidden(hidden);
+    try { localStorage.setItem('chat', hidden ? 'hidden' : 'shown'); } catch {}
+  }, []);
+  // "/" anywhere (outside a text field) opens the chat and focuses it; "ask why" buttons open it too.
+  useEffect(() => {
+    const open = () => { showChat(false); setChatOpen(true); };
+    const onKey = (e) => {
+      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey || e.target.closest?.('input, textarea, select, [contenteditable]')) return;
+      e.preventDefault();
+      open();
+      requestAnimationFrame(() => window.dispatchEvent(new Event('git-help:focus')));
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('git-help:ask', open);
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('git-help:ask', open); };
+  }, [showChat]);
   const repo = pathname.match(/^\/repos\/([^/]+\/[^/]+)/)?.[1] ?? null;
   const logout = async () => {
     await fetch('/auth/logout', { method: 'POST' });
@@ -777,6 +806,8 @@ function Layout() {
           <nav className="nav">
             <NavLink to="/repos">repos</NavLink>
           <NavLink to="/settings">settings</NavLink>
+          <button type="button" className="link-btn chat-toggle" aria-pressed={!chatHidden}
+            title={chatHidden ? 'Show chat (press /)' : 'Hide chat'} onClick={() => showChat(!chatHidden)}>chat</button>
             {me && (
               <span className="me">
                 <img src={me.avatar_url} alt="" width="20" height="20" />
@@ -786,7 +817,7 @@ function Layout() {
             <button className="link-btn" onClick={logout}>sign out</button>
           </nav>
         </header>
-        <div className="shell">
+        <div className={`shell${chatHidden ? ' no-chat' : ''}`}>
           <div className="shell-main">
             <main className="container">
               <ErrorBoundary key={pathname}><Outlet /></ErrorBoundary>
@@ -1124,12 +1155,19 @@ function Repos() {
     'user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member',
   );
   const [q, setQ] = useState('');
+  const [summary, setSummary] = useState({}); // repo -> counts, for repos indexed so far
+  useEffect(() => { api('/attention/summary').then(setSummary, () => {}); }, []);
   if (error || !data) return <Status error={error} data={data} />;
   const shown = data.filter((r) => r.full_name.toLowerCase().includes(q.toLowerCase()));
+  const late = Object.values(summary).reduce((n, c) => n + c.overdue, 0);
+  const lateRepos = Object.values(summary).filter((c) => c.overdue > 0).length;
   return (
     <>
       <h1>Repositories</h1>
-      <p className="kicker">{data.length} loaded · recently updated first</p>
+      <p className="kicker">
+        {data.length} loaded · recently updated first
+        {late > 0 && <> · <span className="late-text">{plural(late, 'overdue item')} in {plural(lateRepos, 'repo')}</span></>}
+      </p>
       <input type="search" placeholder="Filter repositories…" aria-label="Filter repositories"
         value={q} onChange={(e) => setQ(e.target.value)} />
       <ul className="list">
@@ -1139,6 +1177,7 @@ function Repos() {
               <Link to={`/repos/${r.full_name}`} className="title">{r.full_name}</Link>
               {r.private && <span className="badge">private</span>}
               {r.fork && <span className="badge">fork</span>}
+              {summary[r.full_name]?.overdue > 0 && <span className="badge late">{summary[r.full_name].overdue} overdue</span>}
               {r.description && <p className="desc">{r.description}</p>}
               <span className="muted">
                 {[r.language, `★ ${r.stargazers_count}`, `updated ${date(r.pushed_at)}`].filter(Boolean).join(' · ')}
@@ -1153,17 +1192,123 @@ function Repos() {
   );
 }
 
-const TABS = {
-  overview: 'Overview',
-  branches: 'Branches',
-  pulls: 'Pull requests',
-  issues: 'Issues',
-  slack: 'Slack',
-  commits: 'Commits',
-  actions: 'Actions',
-  releases: 'Releases',
-  contributors: 'Contributors',
-};
+const TABS = { overview: 'Overview', pulls: 'Pull requests', issues: 'Issues', actions: 'Actions', slack: 'Slack', code: 'Code' };
+// "Code" groups the browse-only tabs; their own URLs (…/commits etc.) keep working.
+const CODE_TABS = ['commits', 'branches', 'releases', 'contributors'];
+
+// Ask the chat panel a question from anywhere (e.g. "ask why" on an overdue issue). ChatPanel listens.
+const askChat = (question) => window.dispatchEvent(new CustomEvent('git-help:ask', { detail: question }));
+
+function Reason({ r }) {
+  return (
+    <blockquote className="reason">
+      “{r.text}”
+      <span className="reason-meta"> {r.github_login}, {new Date(r.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}{r.permalink && <> · <Ext href={r.permalink}>slack ↗</Ext></>}</span>
+    </blockquote>
+  );
+}
+
+function Tile({ n, label, to, tone }) {
+  const body = <><span className="tile-n">{n}</span><span className="tile-label">{label}</span></>;
+  const cls = `tile${tone && n > 0 ? ` ${tone}` : ''}`;
+  return to ? <Link to={to} className={cls}>{body}</Link> : <div className={cls}>{body}</div>;
+}
+
+// One sentence a PM can read in two seconds, built from the same numbers as the tiles.
+function attentionSentence({ counts, overdue }) {
+  if (!counts.overdue) {
+    return counts.due_soon ? `Nothing is overdue. ${plural(counts.due_soon, 'item is', 'items are')} due in the next two weeks.` : 'Nothing is overdue, and nothing is due in the next two weeks.';
+  }
+  const explained = overdue.filter((i) => i.reason).length;
+  const milestones = [...new Set(overdue.map((i) => i.milestone))];
+  return `${plural(counts.overdue, 'item is', 'items are')} overdue${milestones.length === 1 ? `, all in ${milestones[0]}` : ''}. `
+    + (explained === counts.overdue ? 'Every one has a reason from its assignee.'
+      : explained ? `${explained} ${explained === 1 ? 'has a reason' : 'have reasons'} from the assignee; ${counts.overdue - explained} ${counts.overdue - explained === 1 ? "doesn't" : "don't"} yet.`
+        : 'None has a reason from the assignee yet.');
+}
+
+function Attention({ repo }) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  useEffect(() => {
+    let live = true;
+    setData(null);
+    api(`/attention?${new URLSearchParams({ repo })}`).then((d) => live && setData(d), (e) => live && setError(e.message));
+    return () => { live = false; };
+  }, [repo]);
+  const link = (i) => `/repos/${repo}/${i.kind === 'pr' ? 'pulls' : 'issues'}/${i.number}`;
+  if (error) return <p className="error">{error}</p>;
+  if (!data) return <div className="tiles">{[0, 1, 2, 3].map((k) => <div key={k} className="tile skeleton" />)}</div>;
+  const { counts } = data;
+  return (
+    <>
+      <div className="tiles">
+        <Tile n={counts.open_issues} label="open issues" to={`/repos/${repo}/issues`} />
+        <Tile n={counts.open_prs} label="open pull requests" to={`/repos/${repo}/pulls`} />
+        <Tile n={counts.overdue} label="overdue" tone="late" />
+        <Tile n={counts.due_soon} label="due in 14 days" tone="soon" />
+      </div>
+      <p className="attention-line">{attentionSentence(data)}</p>
+
+      {data.overdue.length > 0 && (
+        <>
+          <h3>Needs attention</h3>
+          <ul className="list">
+            {data.overdue.map((i) => (
+              <li key={i.number}>
+                <Link to={link(i)}>#{i.number} {i.title}</Link>
+                <span className="badge late">overdue {i.days_late}d</span>
+                <span className="muted">
+                  {i.kind === 'pr' ? 'pull request' : 'issue'} · {i.milestone} (due {shortDay(i.due_on)})
+                  {i.assignees.length ? ` · ${i.assignees.join(', ')}` : ' · nobody assigned'}
+                  {i.alerted_at && !i.reason && ` · bot asked ${new Date(i.alerted_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}
+                </span>
+                {i.reason ? <Reason r={i.reason} /> : (
+                  <button type="button" className="ask-btn" onClick={() => askChat(`Why isn't #${i.number} done yet?`)}>ask why →</button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {data.due_soon.length > 0 && (
+        <>
+          <h3>Due soon</h3>
+          <ul className="list">
+            {data.due_soon.map((i) => (
+              <li key={i.number}>
+                <Link to={link(i)}>#{i.number} {i.title}</Link>
+                <span className="badge soon">{i.days_late === 0 ? 'due today' : `in ${plural(-i.days_late, 'day')}`}</span>
+                <span className="muted">{i.milestone} (due {shortDay(i.due_on)}){i.assignees.length ? ` · ${i.assignees.join(', ')}` : ''}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {(data.review.length > 0 || data.drafts.length > 0) && (
+        <>
+          <h3>Pull requests</h3>
+          <ul className="list">
+            {data.review.map((i) => (
+              <li key={i.number}>
+                <Link to={link(i)}>#{i.number} {i.title}</Link>
+                <span className="muted">ready for review{i.due_on ? ` · ${i.milestone} (due ${shortDay(i.due_on)})` : ''}</span>
+              </li>
+            ))}
+            {data.drafts.map((i) => (
+              <li key={i.number}>
+                <Link to={link(i)}>#{i.number} {i.title}</Link><span className="badge">draft</span>
+                <span className="muted">still in progress</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </>
+  );
+}
 
 function Overview({ base }) {
   const { data: info, error } = useGitHub(base);
@@ -1172,6 +1317,8 @@ function Overview({ base }) {
   if (error || !info) return <Status error={error} data={info} />;
   return (
     <>
+      <Attention repo={base.slice('repos/'.length)} />
+      <h3>About</h3>
       {info.description && <p>{info.description}</p>}
       <p className="muted">
         {info.visibility} · default branch <code>{info.default_branch}</code> · ★ {info.stargazers_count} ·{' '}
@@ -1186,8 +1333,15 @@ function Overview({ base }) {
 }
 
 function Repo() {
-  const { owner, repo, tab = 'overview' } = useParams();
+  const { owner, repo, tab: rawTab = 'overview' } = useParams();
+  const tab = rawTab === 'code' ? 'commits' : rawTab;
   const [params, setParams] = useSearchParams();
+  const [reasons, setReasons] = useState({}); // issue number -> latest reason given to the bot
+  useEffect(() => {
+    if (tab !== 'issues') return;
+    api(`/followups?${new URLSearchParams({ repo: `${owner}/${repo}` })}`)
+      .then((rows) => setReasons(Object.fromEntries(rows.map((r) => [r.number, r]))), () => {});
+  }, [tab, owner, repo]);
   const state = params.get('state') ?? 'open';
   const base = `repos/${owner}/${repo}`;
   const to = (p) => `/repos/${owner}/${repo}/${p}`;
@@ -1218,12 +1372,13 @@ function Repo() {
           <Link to={to(`issues/${i.number}`)}>#{i.number} {i.title}</Link>
           {i.state === 'closed' && <span className="badge">{i.state_reason === 'not_planned' ? 'not planned' : 'closed'}</span>}
           <DueBadge item={i} />
-          {i.labels.map((l) => <span key={l.id} className="badge">{l.name}</span>)}
           <span className="muted">
             {i.user?.login} · {date(i.created_at)} · {plural(i.comments, 'comment')}
             {i.milestone && ` · ${milestoneText(i.milestone)}`}
+            {i.labels.length > 0 && ` · ${i.labels.map((l) => l.name).join(', ')}`}
             {i.assignees.length > 0 && ` · assigned to ${i.assignees.map((a) => a.login).join(', ')}`}
           </span>
+          {reasons[i.number] && <Reason r={reasons[i.number]} />}
         </li>
       )} />
     ),
@@ -1275,10 +1430,16 @@ function Repo() {
         <SlackLinkButton repo={`${owner}/${repo}`} />
       </div>
       <nav className="tabs">
-        {Object.entries(TABS).map(([k, label]) => (
-          <Link key={k} to={to(k)} aria-current={k === tab ? 'page' : undefined}>{label}</Link>
-        ))}
+        {Object.entries(TABS).map(([k, label]) => {
+          const active = k === tab || (k === 'code' && CODE_TABS.includes(tab));
+          return <Link key={k} to={to(k === 'code' ? 'commits' : k)} aria-current={active ? 'page' : undefined}>{label}</Link>;
+        })}
       </nav>
+      {CODE_TABS.includes(tab) && (
+        <nav className="toggle" aria-label="Code">
+          {CODE_TABS.map((k) => <Link key={k} to={to(k)} aria-current={k === tab ? 'page' : undefined}>{k}</Link>)}
+        </nav>
+      )}
       {(tab === 'pulls' || tab === 'issues') && (
         <div className="toggle">
           {['open', 'closed', 'all'].map((s) => (
