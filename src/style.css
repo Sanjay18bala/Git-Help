@@ -427,3 +427,37 @@ a.tile:hover { border-color: var(--fg); }
 .nav .btn-ghost:hover:not(:disabled) { background: none; }
 .btn.chat-close { display: none; }
 @media (max-width: 900px) { .btn.chat-close { display: inline-flex; } }
+
+/* ---------- rows: state icon · content · comments & avatars (GitHub-style scanning) ---------- */
+.list li.row { display: grid; grid-template-columns: 16px 1fr auto; gap: var(--s-3); align-items: start;
+  margin: 0 calc(-1 * var(--s-3)); padding: var(--s-4) var(--s-3); border-radius: var(--radius); transition: background .12s; }
+.list li.row:hover { background: var(--subtle); }
+.list li.row > .octicon { margin-top: 3px; }
+.list li.row > div > a:first-child { font-weight: 500; text-decoration: none; }
+.list li.row > div > a:first-child:hover { text-decoration: underline; }
+.octicon { flex: none; vertical-align: text-bottom; }
+.octicon.ok { color: var(--ok); } .octicon.merged { color: var(--merged); }
+.octicon.late { color: var(--danger); } .octicon.muted { color: var(--muted); }
+.row-meta { display: flex; align-items: center; gap: var(--s-3); margin-top: 2px; color: var(--muted); font: var(--text-sm) var(--mono); }
+.row-comments { display: inline-flex; align-items: center; gap: var(--s-1); }
+.avatars { display: inline-flex; }
+.avatars img { border-radius: 50%; border: 2px solid var(--bg); }
+.avatars img + img { margin-left: -6px; }
+.tabs .count { margin-left: 6px; padding: 0 6px; border-radius: var(--radius-full); background: var(--subtle);
+  color: var(--muted); font: var(--text-xs)/18px var(--mono); display: inline-block; }
+
+/* ---------- loading skeletons ---------- */
+.skeleton li { display: grid; gap: var(--s-2); }
+.skeleton li span { display: block; height: 14px; width: 60%; border-radius: 4px; background: var(--subtle);
+  background-image: linear-gradient(90deg, transparent, var(--border), transparent); background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite; }
+.skeleton li span + span { height: 11px; width: 38%; }
+@keyframes shimmer { from { background-position: 150% 0; } to { background-position: -50% 0; } }
+@media (prefers-reduced-motion: reduce) { .skeleton li span { animation: none; } }
+
+/* ---------- toasts ---------- */
+.toasts { position: fixed; left: 50%; bottom: var(--s-6); transform: translateX(-50%); z-index: 50;
+  display: grid; gap: var(--s-2); justify-items: center; pointer-events: none; }
+.toast { padding: var(--s-2) var(--s-4); border-radius: var(--radius); background: var(--fg); color: var(--bg);
+  font: 500 var(--text-md) var(--sans); box-shadow: 0 4px 16px rgb(0 0 0 / .18); animation: toast-in .18s ease-out; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(6px); } }

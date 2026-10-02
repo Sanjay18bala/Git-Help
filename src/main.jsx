@@ -8,7 +8,20 @@ import {
 import DOMPurify from 'dompurify';
 import './style.css';
 
-const date = (s) => (s ? new Date(s).toLocaleDateString() : '');
+// "3 days ago"; exact date and time on hover via <time title> where it's rendered as an element.
+const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+function ago(iso) {
+  const secs = (Date.parse(iso) - Date.now()) / 1000;
+  for (const [unit, size] of [['year', 31536000], ['month', 2592000], ['week', 604800], ['day', 86400], ['hour', 3600], ['minute', 60]]) {
+    if (Math.abs(secs) >= size) return rtf.format(Math.round(secs / size), unit);
+  }
+  return 'just now';
+}
+const date = (s) => (s ? ago(s) : '');
+const Time = ({ value }) => (value ? <time dateTime={value} title={new Date(value).toLocaleString()}>{ago(value)}</time> : null);
+
+// Browser tab title per page, like GitHub's "#14 Title · owner/repo".
+const useTitle = (title) => useEffect(() => { document.title = title ? `${title} · Git-Help` : 'Git-Help'; }, [title]);
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 // Milestone due dates are calendar dates (GitHub stores them as midnight UTC), so compare date parts: as a
@@ -37,9 +50,60 @@ function DueBadge({ item }) {
 const runTone = (r) => (r.conclusion === 'success' ? 'ok'
   : ['failure', 'timed_out', 'startup_failure'].includes(r.conclusion) ? 'late'
     : r.conclusion ? '' : 'warn');
+// State icons: GitHub Octicons (MIT, https://github.com/primer/octicons), colored like the badges.
+const ICON_PATHS = {
+  issueOpen: 'M8 9.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3ZM8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Z',
+  issueClosed: 'M11.28 6.78a.75.75 0 0 0-1.06-1.06L7.25 8.69 5.78 7.22a.75.75 0 0 0-1.06 1.06l2 2a.75.75 0 0 0 1.06 0l3.5-3.5ZM16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0Zm-1.5 0a6.5 6.5 0 1 0-13 0 6.5 6.5 0 0 0 13 0Z',
+  issueSkipped: 'M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Zm9.78-2.22-5.5 5.5a.749.749 0 0 1-1.275-.326.749.749 0 0 1 .215-.734l5.5-5.5a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042Z',
+  pr: 'M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z',
+  merged: 'M5.45 5.154A4.25 4.25 0 0 0 9.25 7.5h1.378a2.251 2.251 0 1 1 0 1.5H9.25A5.734 5.734 0 0 1 5 7.123v3.505a2.25 2.25 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.95-.218ZM4.25 13.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm8.5-4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5ZM5 3.25a.75.75 0 1 0 0 .005V3.25Z',
+  prClosed: 'M3.25 1A2.25 2.25 0 0 1 4 5.372v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.251 2.251 0 0 1 3.25 1Zm9.5 5.5a.75.75 0 0 1 .75.75v3.378a2.251 2.251 0 1 1-1.5 0V7.25a.75.75 0 0 1 .75-.75Zm-2.03-5.273a.75.75 0 0 1 1.06 0l.97.97.97-.97a.748.748 0 0 1 1.265.332.75.75 0 0 1-.205.729l-.97.97.97.97a.751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018l-.97-.97-.97.97a.749.749 0 0 1-1.275-.326.749.749 0 0 1 .215-.734l.97-.97-.97-.97a.75.75 0 0 1 0-1.06ZM2.5 12.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm9.5 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm-9-9.5a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z',
+  comment: 'M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0 1 13.25 12H9.06l-2.573 2.573A1.458 1.458 0 0 1 4 13.543V12H2.75A1.75 1.75 0 0 1 1 10.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h4.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z',
+};
+const Octicon = ({ name, tone, label, size = 16 }) => (
+  <svg className={`octicon ${tone ?? ''}`} viewBox="0 0 16 16" width={size} height={size} fill="currentColor" role="img" aria-label={label}>
+    <path d={ICON_PATHS[name]} />
+  </svg>
+);
+function StateIcon({ item }) {
+  if (item.pull_request || item.head) { // a PR (from the issues API or the pulls API)
+    const merged = item.merged_at ?? item.pull_request?.merged_at;
+    if (merged) return <Octicon name="merged" tone="merged" label="merged" />;
+    if (item.state === 'closed') return <Octicon name="prClosed" tone="late" label="closed" />;
+    return <Octicon name="pr" tone={item.draft ? 'muted' : 'ok'} label={item.draft ? 'draft' : 'open'} />;
+  }
+  if (item.state === 'open') return <Octicon name="issueOpen" tone="ok" label="open" />;
+  return item.state_reason === 'not_planned'
+    ? <Octicon name="issueSkipped" tone="muted" label="closed as not planned" />
+    : <Octicon name="issueClosed" tone="merged" label="closed" />;
+}
+// Right side of a row: comment count and assignee avatars.
+function RowMeta({ item }) {
+  return (
+    <span className="row-meta">
+      {item.comments > 0 && <span className="row-comments" title={plural(item.comments, 'comment')}><Octicon name="comment" label="comments" size={14} />{item.comments}</span>}
+      {item.assignees?.length > 0 && (
+        <span className="avatars" title={`assigned to ${item.assignees.map((a) => a.login).join(', ')}`}>
+          {item.assignees.slice(0, 3).map((a) => <img key={a.login} src={a.avatar_url} alt={a.login} width="20" height="20" />)}
+        </span>
+      )}
+    </span>
+  );
+}
 const milestoneText = (m) => (m ? `${m.title}${m.due_on ? ` (due ${shortDay(m.due_on.slice(0, 10))})` : ''}` : '');
 const dateTime = (s) => (s ? new Date(s).toLocaleString() : 'never');
 const slackTime = (ts) => new Date(Number(ts) * 1000).toLocaleString();
+
+// Same request within a few seconds (e.g. the tab counts and the Overview both want /attention): share one fetch.
+const apiCache = new Map();
+function apiCached(path, ttlMs = 10_000) {
+  const hit = apiCache.get(path);
+  if (hit && Date.now() - hit.at < ttlMs) return hit.promise;
+  const promise = api(path);
+  apiCache.set(path, { at: Date.now(), promise });
+  promise.catch(() => apiCache.delete(path));
+  return promise;
+}
 
 // JSON calls to our own /api routes (server.js); throws the server's message on failure.
 async function api(path, { method = 'GET', body } = {}) {
@@ -86,6 +150,9 @@ function useLlmSettings() {
 const FULL = 'application/vnd.github.full+json';
 
 const EMPTY = { key: null, data: null, error: null, next: null, busy: false };
+// Last successful result per request, so revisiting a tab renders at once while it refreshes in the background
+// (stale-while-revalidate). ponytail: unbounded within a session; plenty for one user's browsing.
+const ghCache = new Map();
 
 // Fetches a GitHub endpoint through our proxy. Arrays get "Load more" via the Link header.
 function useGitHub(path, accept) {
@@ -106,13 +173,18 @@ function useGitHub(path, accept) {
     if (!r.ok) return set((p) => ({ ...p, key, error: body.message ?? (r.statusText || `HTTP ${r.status}`), busy: false }));
     const items = body.workflow_runs ?? body; // actions/runs wraps its list in an object
     const next = r.headers.get('link')?.match(/<([^>]+)>;\s*rel="next"/)?.[1];
-    set((p) => ({
-      key,
-      data: page ? [...p.data, ...items] : items,
-      error: null,
-      next: next && new URL(next).searchParams.get('page'),
-      busy: false,
-    }));
+    set((p) => {
+      const fresh = {
+        key,
+        // "Load more" appends to what's on screen, which may be the cached copy rather than this hook's state
+        data: page ? [...(p.key === key ? p.data : ghCache.get(key)?.data ?? []), ...items] : items,
+        error: null,
+        next: next && new URL(next).searchParams.get('page'),
+        busy: false,
+      };
+      ghCache.set(key, fresh);
+      return fresh;
+    });
   }, [key, path, accept, nav]);
 
   const fail = useCallback(
@@ -128,7 +200,7 @@ function useGitHub(path, accept) {
 
   // State is tagged with the request it belongs to. When the path changes, the component re-renders before the
   // new fetch finishes; returning the previous path's data then would hand e.g. commits to the pull-request renderer.
-  const cur = s.key === key ? s : EMPTY;
+  const cur = s.key === key ? s : ghCache.get(key) ?? EMPTY;
   const more = cur.next && !cur.busy && (() => {
     set((p) => ({ ...p, busy: true }));
     load(cur.next, ac.current.signal).catch(fail);
@@ -161,10 +233,33 @@ class ErrorBoundary extends Component {
   }
 }
 
+// Placeholder rows shaped like the list that's coming, so the page doesn't jump when it arrives.
+const Skeleton = ({ rows = 4 }) => (
+  <ul className="list skeleton" aria-busy="true" aria-label="Loading">
+    {Array.from({ length: rows }, (_, i) => <li key={i}><span /><span /></li>)}
+  </ul>
+);
+
 function Status({ error, data }) {
   if (error) return <p className="error">{error}</p>;
-  if (!data) return <p className="muted">Loading…</p>;
+  if (!data) return <Skeleton />;
   return null;
+}
+
+// Brief confirmation at the bottom of the screen: toast('Saved'). Rendered by <Toasts /> in Layout.
+const toast = (text) => window.dispatchEvent(new CustomEvent('git-help:toast', { detail: text }));
+function Toasts() {
+  const [items, setItems] = useState([]);
+  useEffect(() => {
+    const add = (e) => {
+      const id = Math.random();
+      setItems((t) => [...t, { id, text: e.detail }]);
+      setTimeout(() => setItems((t) => t.filter((x) => x.id !== id)), 2600);
+    };
+    window.addEventListener('git-help:toast', add);
+    return () => window.removeEventListener('git-help:toast', add);
+  }, []);
+  return <div className="toasts" role="status" aria-live="polite">{items.map((t) => <div key={t.id} className="toast">{t.text}</div>)}</div>;
 }
 
 function List({ path, render, keep, accept, empty = 'Nothing here.' }) {
@@ -343,6 +438,7 @@ function SlackTab({ repo }) {
       if (index_error) setError(index_error);
       await reload();
       await loadIndex();
+      toast(full ? 'Resynced from scratch' : 'Synced');
     } catch (e) {
       setError(e.message);
     } finally {
@@ -398,7 +494,7 @@ function SlackThreads({ threads }) {
   return (
     <>
       <h3>Recent conversations</h3>
-      {!threads ? <p className="muted">Loading…</p>
+      {!threads ? <Skeleton />
         : !threads.length ? <p className="muted">No messages in the last 90 days.</p>
           : (
             <ul className="list">
@@ -826,6 +922,7 @@ function Layout() {
             <main className="container">
               <ErrorBoundary key={pathname}><Outlet /></ErrorBoundary>
             </main>
+            <Toasts />
             <Footer />
           </div>
           <ChatPanel repo={repo} open={chatOpen} onClose={() => setChatOpen(false)} />
@@ -914,7 +1011,7 @@ function BotSettings() {
   };
   const setLink = (login, slackUserId) => run(() => api(`/people/${encodeURIComponent(login)}`, { method: 'PUT', body: { slack_user_id: slackUserId || null } }));
 
-  if (!status) return <p className="muted">Loading…</p>;
+  if (!status) return <Skeleton />;
   if (!status.configured) {
     return (
       <p className="muted">
@@ -952,7 +1049,7 @@ function BotSettings() {
         </ul>
       )}
       <div className="actions">
-        <button type="button" className="btn btn-primary" disabled={busy} onClick={() => run(() => api('/people/match', { method: 'POST' }))}>
+        <button type="button" className="btn btn-primary" disabled={busy} onClick={() => run(async () => { const r = await api('/people/match', { method: 'POST' }); toast('People matched'); return r; })}>
           {busy ? 'matching…' : 'match people from indexed repos'}
         </button>
       </div>
@@ -992,7 +1089,7 @@ function RepoAlerts({ repo }) {
             <p className="muted">Can't notify: {data.cannot.map((c) => `#${c.number} ${c.login ?? ''} (${c.reason})`).join('; ')}.</p>
           )}
           {data.send.length > 0 && (
-            <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => act(() => api('/alerts/send', { method: 'POST', body: { repo } }))}>
+            <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => act(async () => { const { sent } = await api('/alerts/send', { method: 'POST', body: { repo } }); toast(sent.length ? `Sent ${plural(sent.length, 'DM')}` : 'Nothing new to send'); })}>
               {busy ? 'sending…' : 'send now'}
             </button>
           )}
@@ -1015,7 +1112,7 @@ function RepoAlerts({ repo }) {
 function AlertSettings() {
   const [repos, setRepos] = useState(null);
   useEffect(() => { api('/repos/indexed').then(setRepos, () => setRepos([])); }, []);
-  if (!repos) return <p className="muted">Loading…</p>;
+  if (!repos) return <Skeleton />;
   if (!repos.length) return <p className="muted">No repos indexed yet: open a repo and ask the chat about it first.</p>;
   return (
     <>
@@ -1030,6 +1127,7 @@ function AlertSettings() {
 }
 
 function SettingsPage() {
+  useTitle('Settings');
   const { settings, reload } = useContext(LlmContext);
   const [form, setForm] = useState(null);
   const [models, setModels] = useState({}); // provider -> model ids, or an error message
@@ -1053,7 +1151,7 @@ function SettingsPage() {
     for (const p of new Set([settings.chat.provider, settings.embed.provider])) loadModels(p);
   }, [settings, loadModels]);
 
-  if (!settings || !form) return <p className="muted">Loading…</p>;
+  if (!settings || !form) return <Skeleton />;
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
   const setProvider = (kind, provider) => set({ [kind]: { provider, model: settings.defaults[kind][provider] ?? '' } });
   const modelList = (provider) => (Array.isArray(models[provider]) ? models[provider] : undefined);
@@ -1068,7 +1166,8 @@ function SettingsPage() {
       const next = await api('/settings', { method: 'PUT', body: toPatch(form) });
       setForm(toForm(next));
       await reload();
-      setNotice({ ok: true, text: 'Saved.' });
+      setNotice(null);
+      toast('Settings saved');
       if (andTest) setTest(await api('/settings/test', { method: 'POST' }));
     } catch (e) {
       setNotice({ ok: false, text: e.message });
@@ -1158,6 +1257,7 @@ function Repos() {
   const { data, error, more } = useGitHub(
     'user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member',
   );
+  useTitle('Repositories');
   const [q, setQ] = useState('');
   const [summary, setSummary] = useState({}); // repo -> counts, for repos indexed so far
   useEffect(() => { api('/attention/summary').then(setSummary, () => {}); }, []);
@@ -1237,7 +1337,7 @@ function Attention({ repo }) {
   useEffect(() => {
     let live = true;
     setData(null);
-    api(`/attention?${new URLSearchParams({ repo })}`).then((d) => live && setData(d), (e) => live && setError(e.message));
+    apiCached(`/attention?${new URLSearchParams({ repo })}`).then((d) => live && setData(d), (e) => live && setError(e.message));
     return () => { live = false; };
   }, [repo]);
   const link = (i) => `/repos/${repo}/${i.kind === 'pr' ? 'pulls' : 'issues'}/${i.number}`;
@@ -1331,7 +1431,7 @@ function Overview({ base }) {
       </p>
       <h3>README</h3>
       {noReadme ? <p className="muted">No README.</p>
-        : readme ? <Markdown html={readme} /> : <p className="muted">Loading…</p>}
+        : readme ? <Markdown html={readme} /> : <Skeleton />}
     </>
   );
 }
@@ -1341,6 +1441,12 @@ function Repo() {
   const tab = rawTab === 'code' ? 'commits' : rawTab;
   const [params, setParams] = useSearchParams();
   const [reasons, setReasons] = useState({}); // issue number -> latest reason given to the bot
+  const [counts, setCounts] = useState(null);
+  useEffect(() => {
+    apiCached(`/attention?${new URLSearchParams({ repo: `${owner}/${repo}` })}`).then((d) => setCounts(d.counts), () => {});
+  }, [owner, repo]);
+  useTitle(`${CODE_TABS.includes(tab) ? 'Code' : TABS[tab] ?? ''} · ${owner}/${repo}`);
+  const tabCount = { pulls: counts?.open_prs, issues: counts?.open_issues };
   useEffect(() => {
     if (tab !== 'issues') return;
     api(`/followups?${new URLSearchParams({ repo: `${owner}/${repo}` })}`)
@@ -1359,12 +1465,15 @@ function Repo() {
     ),
     pulls: () => (
       <List path={`${base}/pulls?state=${state}&per_page=50`} empty={`No ${state === 'all' ? '' : `${state} `}pull requests.`} render={(p) => (
-        <li key={p.id}>
+        <li key={p.id} className="row">
+          <StateIcon item={p} />
+          <div>
           <Link to={to(`pulls/${p.number}`)}>#{p.number} {p.title}</Link>
           {p.draft && <span className="badge warn">draft</span>}
-          {p.merged_at ? <span className="badge merged">merged</span> : p.state === 'closed' && <span className="badge">closed</span>}
           <DueBadge item={p} />
-          <span className="muted">{p.user?.login} · {p.head.ref} → {p.base.ref} · {date(p.created_at)}{p.milestone && ` · ${milestoneText(p.milestone)}`}</span>
+          <span className="muted">{p.user?.login} · {p.head.ref} → {p.base.ref} · <Time value={p.created_at} />{p.milestone && ` · ${milestoneText(p.milestone)}`}</span>
+          </div>
+          <RowMeta item={p} />
         </li>
       )} />
     ),
@@ -1372,17 +1481,19 @@ function Repo() {
       // GitHub's issues endpoint also returns pull requests; hide them here.
       <List path={`${base}/issues?state=${state}&per_page=50`} keep={(i) => !i.pull_request}
         empty={`No ${state === 'all' ? '' : `${state} `}issues.`} render={(i) => (
-        <li key={i.id}>
+        <li key={i.id} className="row">
+          <StateIcon item={i} />
+          <div>
           <Link to={to(`issues/${i.number}`)}>#{i.number} {i.title}</Link>
-          {i.state === 'closed' && <span className="badge">{i.state_reason === 'not_planned' ? 'not planned' : 'closed'}</span>}
           <DueBadge item={i} />
           <span className="muted">
-            {i.user?.login} · {date(i.created_at)} · {plural(i.comments, 'comment')}
+            {i.user?.login} · <Time value={i.created_at} />
             {i.milestone && ` · ${milestoneText(i.milestone)}`}
             {i.labels.length > 0 && ` · ${i.labels.map((l) => l.name).join(', ')}`}
-            {i.assignees.length > 0 && ` · assigned to ${i.assignees.map((a) => a.login).join(', ')}`}
           </span>
           {reasons[i.number] && <Reason r={reasons[i.number]} />}
+          </div>
+          <RowMeta item={i} />
         </li>
       )} />
     ),
@@ -1436,7 +1547,11 @@ function Repo() {
       <nav className="tabs">
         {Object.entries(TABS).map(([k, label]) => {
           const active = k === tab || (k === 'code' && CODE_TABS.includes(tab));
-          return <Link key={k} to={to(k === 'code' ? 'commits' : k)} aria-current={active ? 'page' : undefined}>{label}</Link>;
+          return (
+            <Link key={k} to={to(k === 'code' ? 'commits' : k)} aria-current={active ? 'page' : undefined}>
+              {label}{tabCount[k] > 0 && <span className="count">{tabCount[k]}</span>}
+            </Link>
+          );
         })}
       </nav>
       {CODE_TABS.includes(tab) && (
@@ -1460,6 +1575,7 @@ function Detail({ kind }) {
   const { owner, repo, n } = useParams();
   const base = `repos/${owner}/${repo}`;
   const { data: item, error } = useGitHub(`${base}/${kind}/${n}`, FULL);
+  useTitle(item ? `#${item.number} ${item.title} · ${owner}/${repo}` : `#${n} · ${owner}/${repo}`);
   if (error || !item) return <Status error={error} data={item} />;
   const isPR = kind === 'pulls';
   const status = item.merged ? 'merged'
@@ -1472,7 +1588,7 @@ function Detail({ kind }) {
       <h1>{item.title} <span className="num">#{n}</span></h1>
       <p className="kicker">
         <span className={`badge status-${status.replace(' ', '-')}`}>{status}</span><DueBadge item={item} /> opened by{' '}
-        {item.user?.login} on {date(item.created_at)} · <Ext href={item.html_url}>view on github ↗</Ext>
+        {item.user?.login} <Time value={item.created_at} /> · <Ext href={item.html_url}>view on github ↗</Ext>
       </p>
       {item.milestone && <p className="kicker">milestone {milestoneText(item.milestone)}</p>}
       {isPR && (
