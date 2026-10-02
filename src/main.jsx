@@ -33,6 +33,10 @@ function DueBadge({ item }) {
   if (!d) return null;
   return <span className={`badge${d.late > 0 ? ' late' : d.late >= -2 ? ' soon' : ''}`} title={d.title}>{d.text}</span>;
 }
+// GitHub Actions run → badge tone: passed green, failed red, still going amber, skipped/cancelled neutral.
+const runTone = (r) => (r.conclusion === 'success' ? 'ok'
+  : ['failure', 'timed_out', 'startup_failure'].includes(r.conclusion) ? 'late'
+    : r.conclusion ? '' : 'warn');
 const milestoneText = (m) => (m ? `${m.title}${m.due_on ? ` (due ${shortDay(m.due_on.slice(0, 10))})` : ''}` : '');
 const dateTime = (s) => (s ? new Date(s).toLocaleString() : 'never');
 const slackTime = (ts) => new Date(Number(ts) * 1000).toLocaleString();
@@ -377,7 +381,7 @@ function SlackTab({ repo }) {
       <div className="actions">
         {mine.length > 0 && (
           <>
-            <button type="button" onClick={() => syncNow(false)} disabled={syncing}>{syncing ? 'syncing…' : 'sync now'}</button>
+            <button type="button" className="primary" onClick={() => syncNow(false)} disabled={syncing}>{syncing ? 'syncing…' : 'sync now'}</button>
             <button type="button" className="link-btn" onClick={() => syncNow(true)} disabled={syncing}>full resync</button>
           </>
         )}
@@ -938,7 +942,7 @@ function BotSettings() {
                 {data.slackUsers.map((u) => <option key={u.id} value={u.id}>{u.display || u.real || u.handle}</option>)}
               </select>
               <span className="person-how">
-                {p.slack_user_id && <span className={`badge${p.confirmed ? '' : ' soon'}`}>{MATCH_LABEL[p.method] ?? p.method}</span>}
+                {p.slack_user_id && <span className={`badge ${p.confirmed ? 'ok' : 'soon'}`}>{MATCH_LABEL[p.method] ?? p.method}</span>}
                 {p.slack_user_id && !p.confirmed && (
                   <button type="button" className="link-btn" disabled={busy} onClick={() => setLink(p.github_login, p.slack_user_id)}>confirm</button>
                 )}
@@ -948,7 +952,7 @@ function BotSettings() {
         </ul>
       )}
       <div className="actions">
-        <button type="button" disabled={busy} onClick={() => run(() => api('/people/match', { method: 'POST' }))}>
+        <button type="button" className="primary" disabled={busy} onClick={() => run(() => api('/people/match', { method: 'POST' }))}>
           {busy ? 'matching…' : 'match people from indexed repos'}
         </button>
       </div>
@@ -988,7 +992,7 @@ function RepoAlerts({ repo }) {
             <p className="muted">Can't notify: {data.cannot.map((c) => `#${c.number} ${c.login ?? ''} (${c.reason})`).join('; ')}.</p>
           )}
           {data.send.length > 0 && (
-            <button type="button" className="link-btn" disabled={busy} onClick={() => act(() => api('/alerts/send', { method: 'POST', body: { repo } }))}>
+            <button type="button" className="primary small" disabled={busy} onClick={() => act(() => api('/alerts/send', { method: 'POST', body: { repo } }))}>
               {busy ? 'sending…' : 'send now'}
             </button>
           )}
@@ -1136,7 +1140,7 @@ function SettingsPage() {
       )}
 
       <div className="actions">
-        <button type="submit" disabled={saving}>{saving ? 'saving…' : 'save'}</button>
+        <button type="submit" className="primary" disabled={saving}>{saving ? 'saving…' : 'save'}</button>
         <button type="button" className="link-btn" disabled={saving} onClick={() => save(true)}>save & test connection</button>
       </div>
       {notice && <p className={notice.ok ? 'muted' : 'error'} role="status">{notice.text}</p>}
@@ -1299,7 +1303,7 @@ function Attention({ repo }) {
             ))}
             {data.drafts.map((i) => (
               <li key={i.number}>
-                <Link to={link(i)}>#{i.number} {i.title}</Link><span className="badge">draft</span>
+                <Link to={link(i)}>#{i.number} {i.title}</Link><span className="badge warn">draft</span>
                 <span className="muted">still in progress</span>
               </li>
             ))}
@@ -1357,7 +1361,7 @@ function Repo() {
       <List path={`${base}/pulls?state=${state}&per_page=50`} empty={`No ${state === 'all' ? '' : `${state} `}pull requests.`} render={(p) => (
         <li key={p.id}>
           <Link to={to(`pulls/${p.number}`)}>#{p.number} {p.title}</Link>
-          {p.draft && <span className="badge">draft</span>}
+          {p.draft && <span className="badge warn">draft</span>}
           {p.merged_at ? <span className="badge merged">merged</span> : p.state === 'closed' && <span className="badge">closed</span>}
           <DueBadge item={p} />
           <span className="muted">{p.user?.login} · {p.head.ref} → {p.base.ref} · {date(p.created_at)}{p.milestone && ` · ${milestoneText(p.milestone)}`}</span>
@@ -1394,7 +1398,7 @@ function Repo() {
       <List path={`${base}/actions/runs?per_page=30`} render={(r) => (
         <li key={r.id}>
           <Ext href={r.html_url}>{r.display_title || r.name}</Ext>
-          <span className="badge">{r.conclusion ?? r.status}</span>
+          <span className={`badge ${runTone(r)}`}>{r.conclusion ?? r.status}</span>
           <span className="muted">{r.name} · {r.head_branch} · {r.event} · {date(r.created_at)}</span>
         </li>
       )} />
@@ -1403,8 +1407,8 @@ function Repo() {
       <List path={`${base}/releases?per_page=30`} render={(r) => (
         <li key={r.id}>
           <Ext href={r.html_url}>{r.name || r.tag_name}</Ext>
-          {r.prerelease && <span className="badge">pre-release</span>}
-          {r.draft && <span className="badge">draft</span>}
+          {r.prerelease && <span className="badge warn">pre-release</span>}
+          {r.draft && <span className="badge warn">draft</span>}
           <span className="muted"><code>{r.tag_name}</code> · {date(r.published_at)}</span>
         </li>
       )} />
@@ -1490,7 +1494,7 @@ function Detail({ kind }) {
           <h3>Reviews</h3>
           <List path={`${base}/pulls/${n}/reviews`} accept={FULL} empty="No reviews yet." render={(r) => (
             <li key={r.id}>
-              <b>{r.user?.login}</b> <span className="badge">{r.state.replace('_', ' ').toLowerCase()}</span>
+              <b>{r.user?.login}</b> <span className={`badge ${{ APPROVED: 'ok', CHANGES_REQUESTED: 'late' }[r.state] ?? ''}`}>{r.state.replace('_', ' ').toLowerCase()}</span>
               <span className="muted">{date(r.submitted_at)}</span>
               <Markdown html={r.body_html} />
             </li>
