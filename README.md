@@ -1,4 +1,4 @@
-# Git-Help
+# GitHelp
 
 A read-only dashboard for everything in your GitHub account. Sign in with GitHub, pick a repository, and browse its
 branches, pull requests, issues, commits, Actions runs, releases and contributors in one place.
@@ -44,7 +44,7 @@ npm install
 
 ### 2. Create a GitHub OAuth App
 
-Each person running Git-Help creates their own OAuth App. This is free and takes a minute.
+Each person running GitHelp creates their own OAuth App. This is free and takes a minute.
 
 1. Go to **GitHub → Settings → Developer settings → OAuth Apps → New OAuth App**,
    or open <https://github.com/settings/applications/new> directly.
@@ -52,7 +52,7 @@ Each person running Git-Help creates their own OAuth App. This is free and takes
 
    | Field | Value |
    |---|---|
-   | Application name | `Git-Help (local)`, or any name you like |
+   | Application name | `GitHelp (local)`, or any name you like |
    | Homepage URL | `http://localhost:5173` |
    | Authorization callback URL | `http://localhost:5173/auth/callback` |
    | Enable Device Flow | leave unchecked |
@@ -96,7 +96,7 @@ Open <http://localhost:5173> and click **Sign in with GitHub**.
 
 ### 5. Connect Slack (optional)
 
-Git-Help reads Slack with a token from a small Slack app that you install into your own workspace. The app can only
+GitHelp reads Slack with a token from a small Slack app that you install into your own workspace. The app can only
 read; it can't post, edit or delete anything.
 
 1. Go to <https://api.slack.com/apps> → **Create New App** → **From a manifest**, and pick your workspace.
@@ -105,8 +105,8 @@ read; it can't post, edit or delete anything.
    ```json
    {
        "display_information": {
-           "name": "Git-Help",
-           "description": "Read-only access so Git-Help can search channel history linked to GitHub repos."
+           "name": "GitHelp",
+           "description": "Read-only access so GitHelp can search channel history linked to GitHub repos."
        },
        "oauth_config": {
            "scopes": {
@@ -162,7 +162,7 @@ on every Slack sync, and the repo's **Slack** tab has a **rebuild index** button
 
 ### 7. Overdue alerts (optional)
 
-Issues get a deadline from their **milestone's due date**. Git-Help shows "overdue" badges, and its Slack bot can DM
+Issues get a deadline from their **milestone's due date**. GitHelp shows "overdue" badges, and its Slack bot can DM
 the assignee of an overdue issue to ask what's holding it up. Their reply is shown on the issue and the chat uses it
 to answer "why isn't #14 done?".
 
@@ -170,7 +170,7 @@ to answer "why isn't #14 done?".
 
    ```json
    "features": {
-       "bot_user": { "display_name": "Git-Help", "always_online": true },
+       "bot_user": { "display_name": "GitHelp", "always_online": true },
        "app_home": { "messages_tab_enabled": true, "messages_tab_read_only_enabled": false }
    },
    "oauth_config": { "scopes": {
@@ -188,7 +188,7 @@ to answer "why isn't #14 done?".
 4. In **Settings → overdue alerts**, turn a repo on. The preview shows exactly who would be messaged before anything
    is sent. Checks run every 15 minutes while the app is running; one reminder after 3 days without a reply.
 
-To run checks without the page open, Git-Help keeps your GitHub token in `.data/`, encrypted with `SESSION_SECRET`;
+To run checks without the page open, GitHelp keeps your GitHub token in `.data/`, encrypted with `SESSION_SECRET`;
 signing out deletes it.
 
 ## Troubleshooting
@@ -215,7 +215,7 @@ signing out deletes it.
 - **Scopes requested:** `repo` and `read:org`. GitHub has no read-only scope for private repositories, so `repo` is
   the minimum that lets you see them.
 - **Read-only:** the local server forwards only `GET` requests, and only to the specific endpoints the UI uses (see
-  `ALLOWED` in `server.js`). Nothing in Git-Help can change your repositories.
+  `ALLOWED` in `server.js`). Nothing in GitHelp can change your repositories.
 - **Token storage:** your GitHub token is kept in an encrypted, `HttpOnly` cookie. It never reaches the page's
   JavaScript, and nothing is stored on disk or sent anywhere except `api.github.com`.
 - **Slack data stays local:** linked channels are copied into `.data/git-help.db` on your machine (gitignored) and

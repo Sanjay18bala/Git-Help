@@ -51,14 +51,14 @@ function deadline(item) {
   const late = Math.round((Date.parse(localDay()) - Date.parse(due)) / 86_400_000);
   return {
     late,
-    text: late > 0 ? `overdue ${late}d` : late === 0 ? 'due today' : `due ${shortDay(due)}`,
+    text: late > 0 ? `${plural(late, 'day')} late` : late === 0 ? 'Due today' : `Due ${shortDay(due)}`,
     title: `${item.milestone.title}: due ${shortDay(due)}`,
   };
 }
 function DueBadge({ item }) {
   const d = deadline(item);
   if (!d) return null;
-  return <span className={`badge${d.late > 0 ? ' late' : d.late >= -2 ? ' soon' : ''}`} title={d.title}>{d.text}</span>;
+  return <span className={`badge${d.late > 0 ? ' late' : d.late >= -3 ? ' soon' : ''}`} title={d.title}>{d.text}</span>;
 }
 // GitHub Actions run → badge tone: passed green, failed red, still going amber, skipped/cancelled neutral.
 const runTone = (r) => (r.conclusion === 'success' ? 'ok'
@@ -83,7 +83,7 @@ function StateIcon({ item }) {
   if (item.pull_request || item.head) { // a PR (from the issues API or the pulls API)
     const merged = item.merged_at ?? item.pull_request?.merged_at;
     if (merged) return <Octicon name="merged" tone="merged" label="merged" />;
-    if (item.state === 'closed') return <Octicon name="prClosed" tone="late" label="closed" />;
+    if (item.state === 'closed') return <Octicon name="prClosed" tone="muted" label="closed" />;
     return <Octicon name="pr" tone={item.draft ? 'muted' : 'ok'} label={item.draft ? 'draft' : 'open'} />;
   }
   if (item.state === 'open') return <Octicon name="issueOpen" tone="ok" label="open" />;
@@ -239,7 +239,7 @@ class ErrorBoundary extends Component {
     if (!this.state.error) return this.props.children;
     return (
       <div className="alert" role="alert">
-        <span className="alert-label">something went wrong on this page</span>
+        <span className="alert-label">Something went wrong on this page</span>
         {this.state.error.message}
         <button className="btn btn-ghost btn-sm" onClick={() => window.location.reload()}>reload page</button>
       </div>
@@ -329,7 +329,7 @@ function SlackLinkButton({ repo }) {
       <button type="button" className={`chip-btn${mine.length ? ' linked' : ''}`} onClick={() => setOpen(true)}
         aria-label={mine.length ? `Slack channels for ${repo}: ${mine.map((l) => l.name).join(', ')}` : `Link a Slack channel to ${repo}`}>
         <HashIcon />
-        <span className="chip-label">{mine.length ? mine.map((l) => l.name).join(', ') : 'link slack channel'}</span>
+        <span className="chip-label">{mine.length ? mine.map((l) => l.name).join(', ') : 'Link Slack channel'}</span>
       </button>
       {open && <SlackLinkDialog repo={repo} onClose={() => setOpen(false)} />}
     </>
@@ -374,7 +374,7 @@ function SlackLinkDialog({ repo, onClose }) {
       <div className="dialog-inner">
         <header className="dialog-head">
           <div>
-            <h2 className="chat-title">link slack channel</h2>
+            <h2 className="chat-title">Link a Slack channel</h2>
             <div className="chat-context">{repo}{status?.configured && ` · ${status.team}`}</div>
           </div>
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => ref.current.close()}>close</button>
@@ -404,7 +404,7 @@ function SlackLinkDialog({ repo, onClose }) {
                             #{c.name}{c.is_private && <span className="badge">private</span>}
                           </span>
                           <span className="channel-action">
-                            {busy === c.id ? (linked.has(c.id) ? 'unlinking…' : 'linking & syncing…')
+                            {busy === c.id ? (linked.has(c.id) ? 'Unlinking…' : 'Linking and syncing…')
                               : linked.has(c.id) ? 'linked · unlink' : 'link'}
                           </span>
                         </button>
@@ -491,8 +491,8 @@ function SlackTab({ repo }) {
       <div className="actions">
         {mine.length > 0 && (
           <>
-            <button type="button" className="btn btn-primary" onClick={() => syncNow(false)} disabled={syncing}>{syncing ? 'syncing…' : 'sync now'}</button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => syncNow(true)} disabled={syncing}>full resync</button>
+            <button type="button" className="btn btn-primary" onClick={() => syncNow(false)} disabled={syncing}>{syncing ? 'Syncing…' : 'Sync now'}</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => syncNow(true)} disabled={syncing}>Full resync</button>
           </>
         )}
         <button type="button" className="btn btn-ghost btn-sm" onClick={rebuild} disabled={syncing}>rebuild index</button>
@@ -836,47 +836,45 @@ function Home() {
       <header className="topbar container">
         <Brand to="/" />
         <nav className="nav">
-          <Ext href="https://github.com/settings/applications">manage access ↗</Ext>
+          <Ext href="https://github.com/settings/applications">Manage GitHub access ↗</Ext>
         </nav>
       </header>
 
       <main className="container">
         <section className="hero">
-          <h1>Your GitHub, in one quiet place.</h1>
-          <p className="kicker">repos · pull requests · issues · branches</p>
+          <h1>See what's late in your repos, and why.</h1>
           <p className="lead">
-            GitHelp pulls everything you need while building a project out of your GitHub account into one read-only
-            dashboard. Sign in once and browse it all, without tab-hopping across github.com.
+            GitHelp is a read-only dashboard for your GitHub repositories. Link a repo to its Slack channels and it asks
+            owners why late work is late, keeps their answers on the issue, and answers your questions with sources.
           </p>
 
           {error && (
             <div className="alert" role="alert">
-              <span className="alert-label">sign-in failed</span>
+              <span className="alert-label">Sign-in failed</span>
               {SIGN_IN_ERRORS[error] ?? error}
             </div>
           )}
 
           <div className="cta">
             <a className="btn btn-primary btn-lg" href="/auth/login"><GitHubMark />Continue with GitHub</a>
-            <span className="hint">read-only · your password never touches this app</span>
+            <span className="hint">Read-only. Your password never reaches this app.</span>
           </div>
         </section>
 
-        <Section title="what you get">
+        <Section title="What you get">
           <Rows rows={[
-            ['repositories', 'Every repo you own, collaborate on, or reach through an organization.'],
-            ['pull requests', 'Open and closed PRs with their descriptions, changed files, reviews and comments.'],
-            ['issues', 'Labels, assignees and full comment threads.'],
-            ['branches', 'Every branch, with protected branches marked.'],
-            ['commits & ci', 'Recent commits, GitHub Actions runs and releases.'],
+            ['Deadlines', 'Every repo’s overdue and upcoming work, by milestone, with how late each item is.'],
+            ['Reasons', 'A Slack bot asks the owner of a late issue what’s holding it up and keeps the reply on the issue.'],
+            ['Ask', 'Questions about a repo answered from its issues, pull requests and Slack, with links to every source.'],
+            ['Everything else', 'Pull requests with diffs and reviews, issues, commits, Actions runs, releases, branches.'],
           ]} />
         </Section>
 
-        <Section title="how sign-in works">
+        <Section title="How sign-in works">
           <Rows rows={[
-            ['01 · authorize', 'You approve access on github.com. GitHelp never asks for or sees your password.'],
-            ['02 · encrypt', 'Your access token is encrypted into an HttpOnly cookie on this machine.'],
-            ['03 · read', 'Requests only read data, and go straight to api.github.com. Revoke access any time.'],
+            ['1. Authorize', 'You approve access on github.com. GitHelp never asks for or sees your password.'],
+            ['2. Encrypt', 'Your access token is encrypted into an HttpOnly cookie on this machine.'],
+            ['3. Read', 'Requests only read data, and go straight to api.github.com. Revoke access any time.'],
           ]} />
         </Section>
       </main>
@@ -1069,7 +1067,7 @@ function KeyField({ label, id, state, value, cleared, onChange, onClear }) {
       <div className="field-row">
         <input id={id} type="password" autoComplete="off" value={value} placeholder={hint}
           onChange={(e) => onChange(e.target.value)} />
-        {state === 'saved' && !cleared && <button type="button" className="btn btn-ghost btn-sm" onClick={onClear}>remove</button>}
+        {state === 'saved' && !cleared && <button type="button" className="btn btn-ghost btn-sm" onClick={onClear}>Remove</button>}
       </div>
     </div>
   );
@@ -1151,7 +1149,7 @@ function BotSettings() {
       )}
       <div className="actions">
         <button type="button" className="btn btn-primary" disabled={busy} onClick={() => run(async () => { const r = await api('/people/match', { method: 'POST' }); toast('People matched'); return r; })}>
-          {busy ? 'matching…' : 'match people from indexed repos'}
+          {busy ? 'Matching…' : 'Match people from indexed repos'}
         </button>
       </div>
     </>
@@ -1191,7 +1189,7 @@ function RepoAlerts({ repo }) {
           )}
           {data.send.length > 0 && (
             <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => act(async () => { const { sent } = await api('/alerts/send', { method: 'POST', body: { repo } }); toast(sent.length ? `Sent ${plural(sent.length, 'DM')}` : 'Nothing new to send'); })}>
-              {busy ? 'sending…' : 'send now'}
+              {busy ? 'Sending…' : 'Send now'}
             </button>
           )}
           {data.log.length > 0 && (
@@ -1280,9 +1278,9 @@ function SettingsPage() {
   return (
     <form className="settings" onSubmit={(e) => { e.preventDefault(); save(false); }}>
       <h1>Settings</h1>
-      <p className="kicker">which models answer questions in the chat panel</p>
+      <p className="kicker">Models, connections, the Slack bot and overdue alerts.</p>
 
-      <Section title="chat model">
+      <Section title="Chat model">
         <div className="field">
           <label htmlFor="chat-provider">Provider</label>
           <select id="chat-provider" value={form.chat.provider} onChange={(e) => setProvider('chat', e.target.value)}>
@@ -1293,7 +1291,7 @@ function SettingsPage() {
           onChange={(model) => set({ chat: { ...form.chat, model } })} hint={listHint(form.chat.provider)} />
       </Section>
 
-      <Section title="embedding model">
+      <Section title="Embedding model">
         <div className="field">
           <label htmlFor="embed-provider">Provider</label>
           <select id="embed-provider" value={form.embed.provider} onChange={(e) => setProvider('embed', e.target.value)}>
@@ -1305,7 +1303,7 @@ function SettingsPage() {
           hint={listHint(form.embed.provider) ?? 'Changing this re-embeds everything the next time you ask a question. Anthropic has no embedding models.'} />
       </Section>
 
-      <Section title="connections">
+      <Section title="Connections">
         <div className="field">
           <label htmlFor="ollama-url">Ollama URL</label>
           <input id="ollama-url" type="url" value={form.ollamaUrl} onChange={(e) => set({ ollamaUrl: e.target.value })} />
@@ -1324,24 +1322,24 @@ function SettingsPage() {
         <p className="hint">Keys are stored encrypted on this machine and never sent back to the browser.</p>
       </Section>
 
-      <Section title="slack bot">
+      <Section title="Slack bot">
         <BotSettings />
       </Section>
 
-      <Section title="overdue alerts">
+      <Section title="Overdue alerts">
         <AlertSettings />
       </Section>
 
       {cloud.length > 0 && (
         <p className="alert" role="note">
-          <span className="alert-label">privacy</span>
+          <span className="alert-label">Privacy</span>
           Questions, and the Slack messages and GitHub text that match them, will be sent to {[...new Set(cloud)].map((p) => PROVIDER_NAMES[p]).join(' and ')}.
         </p>
       )}
 
       <div className="actions">
-        <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'saving…' : 'save'}</button>
-        <button type="button" className="btn" disabled={saving} onClick={() => save(true)}>save & test connection</button>
+        <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button>
+        <button type="button" className="btn" disabled={saving} onClick={() => save(true)}>Save and test connection</button>
       </div>
       {notice && <p className={notice.ok ? 'muted' : 'error'} role="status">{notice.text}</p>}
       {test && (
@@ -1615,7 +1613,7 @@ function Repo() {
         <li key={p.id} className="row">
           <StateIcon item={p} />
           <div>
-          <Link to={to(`pulls/${p.number}`)}>#{p.number} {p.title}</Link>
+          <Link to={to(`pulls/${p.number}`)}><Title text={p.title} /> <span className="ref">#{p.number}</span></Link>
           {p.draft && <span className="badge warn">draft</span>}
           <DueBadge item={p} />
           <span className="muted">{p.user?.login} · {p.head.ref} → {p.base.ref} · <Time value={p.created_at} />{p.milestone && ` · ${milestoneText(p.milestone)}`}</span>
@@ -1631,7 +1629,7 @@ function Repo() {
         <li key={i.id} className="row">
           <StateIcon item={i} />
           <div>
-          <Link to={to(`issues/${i.number}`)}>#{i.number} {i.title}</Link>
+          <Link to={to(`issues/${i.number}`)}><Title text={i.title} /> <span className="ref">#{i.number}</span></Link>
           <DueBadge item={i} />
           <span className="muted">
             {i.user?.login} · <Time value={i.created_at} />
@@ -1687,7 +1685,7 @@ function Repo() {
       <div className="repo-head">
         <div>
           <h1><Link to="/repos" className="crumb">{owner}</Link> / {repo}</h1>
-          <p className="kicker"><Ext href={`https://github.com/${owner}/${repo}`}>view on github ↗</Ext></p>
+          <p className="kicker"><Ext href={`https://github.com/${owner}/${repo}`}>View on GitHub ↗</Ext></p>
         </div>
         <SlackLinkButton repo={`${owner}/${repo}`} />
       </div>
@@ -1703,13 +1701,13 @@ function Repo() {
       </nav>
       {CODE_TABS.includes(tab) && (
         <nav className="toggle" aria-label="Code">
-          {CODE_TABS.map((k) => <Link key={k} to={to(k)} aria-current={k === tab ? 'page' : undefined}>{k}</Link>)}
+          {CODE_TABS.map((k) => <Link key={k} to={to(k)} aria-current={k === tab ? 'page' : undefined}>{k[0].toUpperCase() + k.slice(1)}</Link>)}
         </nav>
       )}
       {(tab === 'pulls' || tab === 'issues') && (
         <div className="toggle">
           {['open', 'closed', 'all'].map((s) => (
-            <button key={s} aria-pressed={s === state} onClick={() => setParams({ state: s })}>{s}</button>
+            <button key={s} aria-pressed={s === state} onClick={() => setParams({ state: s })}>{s[0].toUpperCase() + s.slice(1)}</button>
           ))}
         </div>
       )}
@@ -1720,7 +1718,7 @@ function Repo() {
 
 // One line of the activity timeline for events that aren't comments ("added label bug", "mentioned this in #13").
 function eventText(e, link) {
-  const ref = (i) => <Link to={link(i)}>#{i.number} {i.title}</Link>;
+  const ref = (i) => <Link to={link(i)}>#{i.number} <Title text={i.title} /></Link>;
   switch (e.event) {
     case 'labeled': return <>added {e.labels.map((l) => <Label key={l.name} label={l} />)}</>;
     case 'unlabeled': return <>removed {e.labels.map((l) => <Label key={l.name} label={l} />)}</>;
@@ -1825,7 +1823,7 @@ function DetailSidebar({ item, events, link }) {
       <section>
         <h4>Linked</h4>
         {linked.size ? [...linked.values()].map((i) => (
-          <div key={i.number} className="side-link"><StateIcon item={i} /><Link to={link(i)}>#{i.number} {i.title}</Link></div>
+          <div key={i.number} className="side-link"><StateIcon item={i} /><Link to={link(i)}>#{i.number} <Title text={i.title} /></Link></div>
         )) : <span className="muted">{events ? 'Nothing linked' : '…'}</span>}
       </section>
     </aside>
@@ -1939,11 +1937,11 @@ function Detail({ kind }) {
   return (
     <>
       <p className="kicker"><Link to={`/repos/${owner}/${repo}/${kind}`}>← {owner}/{repo}</Link></p>
-      <h1>{item.title} <span className="num">#{n}</span></h1>
+      <h1><Title text={item.title} /> <span className="num">#{n}</span></h1>
       <p className="detail-meta">
         <span className={`badge status-${status.replace(' ', '-')}`}>{status}</span>
         <span><b>{item.user?.login}</b> opened this <Time value={item.created_at} /> · {plural(item.comments, 'comment')}</span>
-        <Ext href={item.html_url}>view on github ↗</Ext>
+        <Ext href={item.html_url}>View on GitHub ↗</Ext>
       </p>
       {isPR && (
         <p className="kicker">
