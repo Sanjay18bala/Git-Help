@@ -824,19 +824,87 @@ function Home() {
     fetch('/api/gh/user').then((r) => r.ok && nav('/repos')).catch(() => {});
   }, [nav]);
   return (
-    <main className="signin">
-      <Brand to="/" />
-      <h1>See what's late in your repos, and why.</h1>
-      <p className="lead">GitHelp tracks your GitHub deadlines and asks owners why late work is late.</p>
-      {error && (
-        <div className="alert" role="alert">
-          <span className="alert-label">Sign-in failed</span>
-          {SIGN_IN_ERRORS[error] ?? error}
-        </div>
-      )}
-      <a className="btn btn-primary btn-lg" href="/auth/login"><GitHubMark />Continue with GitHub</a>
-      <p className="hint">Read-only access. Your password never reaches GitHelp.</p>
+    <main className="landing">
+      <section className="landing-copy">
+        <Brand to="/" />
+        <h1>See what's late in your repos, and why.</h1>
+        <p className="lead">GitHelp tracks your GitHub deadlines, asks owners in Slack why late work is late, and answers with the reason.</p>
+        {error && (
+          <div className="alert" role="alert">
+            <span className="alert-label">Sign-in failed</span>
+            {SIGN_IN_ERRORS[error] ?? error}
+          </div>
+        )}
+        <a className="btn btn-primary btn-lg" href="/auth/login"><GitHubMark />Continue with GitHub</a>
+        <p className="hint">Read-only access. Your password never reaches GitHelp.</p>
+      </section>
+      <LandingDemo />
     </main>
+  );
+}
+
+// The core loop on the sign-in page, built from the app's own styles: a late issue, the bot's Slack DM and its
+// reply, then Ask answering with the reason. Advances every few seconds unless the visitor prefers reduced motion
+// or picks a step. Demo data: the brewlog demo repo under the fictional owner "maya".
+const DEMO_STEPS = ['Spot what’s late', 'The bot asks why', 'Ask and get the reason'];
+function LandingDemo() {
+  const [step, setStep] = useState(0);
+  const [auto, setAuto] = useState(() => !matchMedia('(prefers-reduced-motion: reduce)').matches);
+  useEffect(() => {
+    if (!auto) return undefined;
+    const t = setTimeout(() => setStep((s) => (s + 1) % DEMO_STEPS.length), 4500);
+    return () => clearTimeout(t);
+  }, [auto, step]);
+  const pick = (i) => { setAuto(false); setStep(i); };
+  return (
+    <section className="demo" aria-label="How GitHelp works, with a demo repository">
+      <div className={`demo-steps${auto ? ' auto' : ''}`} role="tablist" aria-label="Demo steps">
+        {DEMO_STEPS.map((label, i) => (
+          <button key={label} type="button" role="tab" aria-selected={step === i} aria-controls="demo-panel" onClick={() => pick(i)}>
+            <span className="ref">{i + 1}</span> {label}
+          </button>
+        ))}
+      </div>
+      <div className="demo-frame" id="demo-panel" role="tabpanel" aria-live="polite">
+        <div className="demo-bar"><span>maya/brewlog</span><span>{['Overview', 'Slack · direct message', 'Ask'][step]}</span></div>
+        {step === 0 && (
+          <div className="demo-body" key="s0">
+            <p className="demo-lead">4 items in v0.3.0 are past due. None has a reason from the assignee yet.</p>
+            <div className="ledger-row">
+              <div className="ledger-item">
+                <span className="ledger-title">Add grind size field to brews</span>
+                <p className="ledger-meta"><span className="ref">#6</span> · Issue · maya · <span className="late-text">4 days late</span></p>
+              </div>
+              <div className="ledger-why"><p className="muted">No reason yet. Asked Oct 1, no reply.</p></div>
+            </div>
+            <div className="ledger-row">
+              <div className="ledger-item">
+                <span className="ledger-title">Run tests on every push and pull request</span>
+                <p className="ledger-meta"><span className="ref">#8</span> · Issue · maya · <span className="late-text">4 days late</span></p>
+              </div>
+              <div className="ledger-why"><p className="muted">No reason yet. Asked Oct 1, no reply.</p></div>
+            </div>
+          </div>
+        )}
+        {step === 1 && (
+          <div className="demo-body demo-dm" key="s1">
+            <div className="dm-msg"><b>GitHelp</b><p>Hi! #6 Add grind size field to brews in maya/brewlog was due Sep 29 (milestone v0.3.0) and is still open. What's holding it up?</p></div>
+            <div className="dm-msg"><b>maya</b><p className="dm-reply">I was sick</p></div>
+            <div className="dm-msg"><b>GitHelp</b><p>Thanks, noted for #6. I'll share it when someone asks why it's late.</p></div>
+          </div>
+        )}
+        {step === 2 && (
+          <div className="demo-body" key="s2">
+            <p className="demo-q">Why is #6 late?</p>
+            <p>Issue #6 "Add grind size field to brews" is late because maya said they were sick <span className="cite">[1]</span><span className="cite">[2]</span>.</p>
+            <ol className="demo-sources">
+              <li>Issue #6, status and reason <span className="muted">· GitHub</span></li>
+              <li>maya's reply to the overdue alert <span className="muted">· Slack DM, Oct 1</span></li>
+            </ol>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 

@@ -565,10 +565,39 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; backg
 /* lateness reads as text, the same as on the Overview: no box around it */
 .badge.late, .badge.soon { border-color: transparent; padding: 0; }
 
-/* ---------- sign-in ---------- */
-.signin { min-height: 100vh; max-width: 520px; margin: 0 auto; padding: 0 24px; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 16px; }
-.signin .brand { margin-bottom: 24px; }
-.signin h1 { font-size: clamp(28px, 5vw, 36px); font-weight: 500; line-height: 1.2; letter-spacing: -0.02em; }
-.signin .lead { margin: 0 0 8px; font-size: 16px; color: var(--muted); }
-.signin .alert { margin: 0; }
-.signin .hint { margin: 0; }
+/* ---------- sign-in: copy on the left, the product demo on the right ---------- */
+.landing { min-height: 100vh; max-width: 1180px; margin: 0 auto; padding: 48px clamp(20px, 4vw, 48px);
+  display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); align-items: center; gap: 56px; }
+.landing-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; }
+.landing-copy .brand { margin-bottom: 20px; }
+.landing-copy h1 { font-size: clamp(30px, 4vw, 44px); font-weight: 500; line-height: 1.15; letter-spacing: -0.02em; }
+.landing-copy .lead { margin: 0 0 8px; max-width: 42ch; font-size: 17px; color: var(--muted); }
+.landing-copy .alert, .landing-copy .hint { margin: 0; }
+
+.demo-steps { display: flex; flex-wrap: wrap; gap: 4px 20px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
+.demo-steps button { position: relative; padding: 8px 0; margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); font: 13px var(--sans); }
+.demo-steps button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--fg); font-weight: 500; }
+.demo-frame { border: 1px solid var(--border); border-radius: 4px; background: var(--bg); box-shadow: 0 18px 50px rgb(0 0 0 / .08); overflow: hidden; }
+.demo-bar { display: flex; justify-content: space-between; gap: 12px; padding: 9px 16px; border-bottom: 1px solid var(--border); background: var(--panel); font-size: 12px; color: var(--muted); }
+.demo-body { min-height: 312px; box-sizing: border-box; padding: 20px 24px 24px; animation: demo-in .3s ease-out; }
+.demo-body > p { margin: 0 0 12px; font-size: 15px; }
+.demo-lead { font-size: 17px !important; font-weight: 500; line-height: 1.4; }
+.demo-body .ledger-row { padding: 14px 0; }
+.demo-body .ledger-row:last-child { border-bottom: 0; }
+.demo-dm { display: flex; flex-direction: column; gap: 14px; }
+.dm-msg b { font-size: 13px; }
+.dm-msg p { margin: 2px 0 0; font-size: 14px; color: var(--fg); }
+.dm-reply { font-size: 18px !important; }
+.demo-q { font-weight: 600; }
+.demo-sources { margin: 16px 0 0; padding: 12px 0 0 18px; border-top: 1px solid var(--border); font-size: 13px; display: grid; gap: 6px; }
+@keyframes demo-in { from { opacity: 0; transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) { .demo-body { animation: none; } }
+@media (max-width: 900px) {
+  .landing { min-height: 0; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 40px; padding-top: 40px; }
+  .landing-copy .brand { margin-bottom: 8px; }
+}
+/* while the demo plays by itself, the active step shows how long until the next one */
+.demo-steps.auto button[aria-selected="true"]::after { content: ''; position: absolute; left: 0; bottom: -1px; height: 2px; width: 100%;
+  background: var(--muted); transform-origin: left; animation: demo-progress 4.5s linear; }
+@keyframes demo-progress { from { transform: scaleX(0); } }
+@media (prefers-reduced-motion: reduce) { .demo-steps.auto button[aria-selected="true"]::after { display: none; } }
