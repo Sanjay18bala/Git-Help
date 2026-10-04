@@ -814,6 +814,7 @@ const SIGN_IN_ERRORS = {
   bad_verification_code: 'The sign-in code expired. Please try again.',
   incorrect_client_credentials: 'The OAuth client ID or secret in .env is wrong. See the README.',
   redirect_uri_mismatch: 'The OAuth App callback URL must be http://localhost:5173/auth/callback.',
+  not_allowed: "Your GitHub account isn't on this GitHelp's list of allowed users. Ask whoever runs it to add you.",
 };
 
 function Home() {

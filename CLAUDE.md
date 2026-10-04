@@ -11,6 +11,8 @@ npm test        # node --test: runs every *.test.js (plain node:assert scripts, 
 node slack.test.js  # run a single test file
 node eval/rag-eval.js  # RAG answer key against the real dev server + models (needs the brewlog demo data and `gh` auth)
 npx vite build  # sanity-check that the frontend compiles (dist/ is gitignored)
+npm run build && npm start  # production server (start.js): built app + API + background job, no Vite
+docker build -t githelp .   # the same in a container; data in the /app/.data volume
 ```
 
 `npm run dev` refuses to start unless `.env` has `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `SESSION_SECRET` and the three Slack tokens `SLACK_USER_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN` (`checkEnv()` in server.js; see `.env.example` / README). Slack is required, not optional: the bot and linked channels are the product's core. Port 5173 is fixed (`strictPort`) because it must match the GitHub OAuth App callback URL `http://localhost:5173/auth/callback`. Node >= 22.13 (for the built-in `node:sqlite`). The chat needs Ollama (`gemma3:4b` + `nomic-embed-text` by default) or a cloud provider configured on `/settings`.
@@ -19,7 +21,7 @@ npx vite build  # sanity-check that the frontend compiles (dist/ is gitignored)
 
 A read-only GitHub dashboard: Express backend + React SPA, both served by one Vite dev server.
 
-- **`server.js`** exports an Express `app`; **`vite.config.js`** mounts it as middleware via a plugin (`configureServer`). So `/auth/*` and `/api/gh/*` are handled in-process by Vite. `server.js` loads `.env` itself with `process.loadEnvFile()`.
+- **`server.js`** exports an Express `app`; **`vite.config.js`** mounts it as middleware via a plugin (`configureServer`) in development, and **`start.js`** serves it with the built `dist/` (SPA fallback for client routes) in production. Both call `checkEnv()` and `startBackground()`. Sign-in is limited to `ALLOWED_GITHUB_USERS` when set (required when `APP_URL` isn't localhost; the login is sealed into the session and re-checked on every request). So `/auth/*` and `/api/gh/*` are handled in-process by Vite. `server.js` loads `.env` itself with `process.loadEnvFile()`.
 - **Auth:** GitHub OAuth web flow (`/auth/login` → GitHub → `/auth/callback`) with a random `state` cookie. The access token is stored in an AES-256-GCM-encrypted `HttpOnly` cookie (`seal`/`unseal` in `secrets.js`, keyed by `SESSION_SECRET`, re-exported from `server.js`); the token never reaches browser JS. `/api/slack`, `/api/settings`, `/api/index` and `/api/chat` share `requireSession`, which sets `req.token`.
 - **Proxy:** `/api/gh/<path>` forwards to `api.github.com/<path>` with the user's token. It is **GET-only and allowlisted** (`ALLOWED` regexes in `server.js`). Read-only is enforced here, not by OAuth scope (`repo` grants write, but GitHub has no read-only private-repo scope). To show new GitHub data: add the pattern to `ALLOWED`, add a case to `server.test.js`, then fetch it in the UI. The proxy forwards only `application/vnd.github.*` Accept headers and passes through `Link` and `x-ratelimit-remaining`.
 - **Frontend is a single file, `src/main.jsx`** (routes, pages, components), plus `src/style.css`. React Router routes: `/` (login/onboarding), and under `Layout`: `/repos`, `/repos/:owner/:repo/:tab?`, `/repos/:owner/:repo/(pulls|issues)/:n`.

@@ -20,6 +20,16 @@ const secure = APP_URL.startsWith('https') ? '; Secure' : '';
 
 export { seal, unseal }; // server.test.js imports them from here
 
+// Who may sign in: ALLOWED_GITHUB_USERS, comma-separated GitHub logins. Unset means anyone who can reach the server,
+// which is fine on localhost; checkEnv() requires the list otherwise, because anyone signed in can read the linked
+// Slack channels. The login is sealed into the session, so removing someone takes effect on their next request.
+const allowedUsers = () => (process.env.ALLOWED_GITHUB_USERS ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+export const isAllowedUser = (login, list = allowedUsers()) => !list.length || list.includes(String(login ?? '').toLowerCase());
+const sessionToken = (req) => {
+  const s = unseal(cookies(req).session ?? '');
+  return s?.token && isAllowedUser(s.login) ? s.token : null;
+};
+
 // Read-only allowlist: the proxy only reaches the endpoints the UI uses.
 const R = 'repos/[\\w.-]+/[\\w.-]+';
 const ALLOWED = [
@@ -46,6 +56,10 @@ export function checkEnv() {
     .filter((k) => !process.env[k]);
   if (missing.length) {
     throw new Error(`Missing ${missing.join(', ')} in .env. Copy .env.example to .env and fill it in (README, "Set up").`);
+  }
+  if (!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(APP_URL) && !allowedUsers().length) {
+    throw new Error('APP_URL is not localhost, so set ALLOWED_GITHUB_USERS in .env to the GitHub logins allowed to sign in '
+      + '(comma-separated). Anyone signed in can read the linked Slack channels.');
   }
 }
 
@@ -84,7 +98,11 @@ app.get('/auth/callback', async (req, res) => {
   const { access_token, error } = await r.json();
   if (!access_token) return res.redirect(`/?error=${encodeURIComponent(error ?? 'oauth_failed')}`);
 
-  res.append('Set-Cookie', cookie('session', seal({ token: access_token }), 60 * 60 * 24 * 30));
+  const me = await fetch('https://api.github.com/user', {
+    headers: { Authorization: `Bearer ${access_token}`, Accept: 'application/vnd.github+json' },
+  }).then((u) => u.json()).catch(() => ({}));
+  if (!isAllowedUser(me.login)) return res.redirect('/?error=not_allowed');
+  res.append('Set-Cookie', cookie('session', seal({ token: access_token, login: me.login }), 60 * 60 * 24 * 30));
   alerts.rememberGithubToken(access_token); // for the overdue check, which runs with no browser open
   res.redirect('/repos');
 });
@@ -97,7 +115,7 @@ app.post('/auth/logout', (req, res) => {
 
 app.use('/api/gh', async (req, res) => {
   if (req.method !== 'GET') return res.sendStatus(405);
-  const token = unseal(cookies(req).session ?? '')?.token;
+  const token = sessionToken(req);
   if (!token) return res.status(401).json({ message: 'Not signed in' });
   const path = req.path.slice(1);
   if (!isAllowed(path)) return res.status(403).json({ message: 'Endpoint not allowed' });
@@ -127,7 +145,7 @@ const slackApi = express.Router();
 
 // Every /api/slack, /api/settings, /api/index and /api/chat route needs a GitHub session; req.token is its token.
 const requireSession = (req, res, next) => {
-  req.token = unseal(cookies(req).session ?? '')?.token;
+  req.token = sessionToken(req);
   if (!req.token) return res.status(401).json({ message: 'Not signed in' });
   alerts.rememberGithubToken(req.token); // sessions from before this feature get stored too
   next();

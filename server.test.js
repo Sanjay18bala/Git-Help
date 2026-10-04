@@ -20,4 +20,11 @@ assert.equal(unseal(s.slice(0, 20) + (s[20] === 'A' ? 'B' : 'A') + s.slice(21)),
 assert.equal(unseal('garbage'), null);
 assert.equal(unseal(''), null);
 
+// Sign-in allow-list: empty means anyone (local use); otherwise exact logins, case-insensitive.
+const { isAllowedUser } = await import('./server.js');
+assert(isAllowedUser('anyone', []));
+assert(isAllowedUser('Maya', ['maya', 'zed']));
+assert(!isAllowedUser('mallory', ['maya', 'zed']));
+assert(!isAllowedUser(undefined, ['maya']), 'a session without a login is refused when a list is set');
+
 console.log('ok');

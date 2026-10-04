@@ -1,0 +1,11 @@
+# Never bake secrets or local data into the image; they come in at run time (--env-file, a volume).
+.env
+.env.*
+!.env.example
+.data
+node_modules
+dist
+.git
+brag-output*
+docs
+*.log

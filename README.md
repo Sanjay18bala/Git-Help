@@ -16,6 +16,7 @@ through Ollama, so nothing leaves your computer.
 - [What you need](#what-you-need)
 - [Set up](#set-up) (about 15 minutes)
 - [First run](#first-run)
+- [Running it all the time, for your team](#running-it-all-the-time-for-your-team)
 - [Using a cloud model instead of Ollama](#using-a-cloud-model-instead-of-ollama)
 - [Troubleshooting](#troubleshooting)
 - [Security and your data](#security-and-your-data)
@@ -167,6 +168,44 @@ To have the bot post a summary of what's late to the linked channel, pick **Dail
 digest**. Invite the bot to that channel first: type `/invite @GitHelp` in it. Press **⌘J**
 (Ctrl+J on Windows and Linux) or click **Ask a question** to ask about the repository; answers cite their sources.
 
+## Running it all the time, for your team
+
+GitHelp only checks deadlines, messages people and posts digests while it's running. To keep it on, run it on a
+machine that's always on, such as a small cloud server or a computer at the office, with Docker:
+
+1. On that machine, clone the repository and create `.env` as in [Set up](#set-up), then add:
+
+   ```ini
+   APP_URL=https://githelp.example.com
+   ALLOWED_GITHUB_USERS=your-login,a-teammate
+   ```
+
+   `APP_URL` is the address people open. `ALLOWED_GITHUB_USERS` lists the GitHub logins allowed to sign in; GitHelp
+   refuses to start without it when `APP_URL` isn't localhost, because anyone signed in can read the linked Slack
+   channels.
+2. In your GitHub OAuth App (or a second one for the server), set the **Homepage URL** to `APP_URL` and the
+   **Authorization callback URL** to `APP_URL/auth/callback`.
+3. Build and start it:
+
+   ```bash
+   docker build -t githelp .
+   docker run -d --name githelp --restart unless-stopped -p 5173:5173 --env-file .env -v githelp-data:/app/.data githelp
+   ```
+
+4. If people reach it over the internet, put it behind HTTPS (for example with [Caddy](https://caddyserver.com) as a
+   reverse proxy) and use an `https://` `APP_URL`.
+
+Good to know:
+
+- **Slack needs no public address.** The bot receives replies over Socket Mode, an outgoing connection.
+- **Models:** inside Docker, `localhost` is the container. To use Ollama on the same machine, add
+  `OLLAMA_URL=http://host.docker.internal:11434` to `.env`, or choose a cloud model in **Settings**.
+- **Data** lives in the `githelp-data` volume, so it survives restarts and upgrades. To upgrade: `git pull`, build
+  again, then `docker rm -f githelp` and run the same `docker run` command.
+- **Without Docker:** `npm run build`, then `npm start` (Node 22.13+), kept running with your process manager of choice.
+- **One GitHelp per team.** Everyone who signs in shares the same Slack links, bot and settings, and the background
+  checks use the GitHub access of whoever signed in most recently.
+
 ## Using a cloud model instead of Ollama
 
 In **Settings**, set the chat provider to **Anthropic** or **OpenAI-compatible** (OpenAI, Groq, OpenRouter, Together,
@@ -181,6 +220,8 @@ matches it are sent to that provider.
 | What you see | Fix |
 |---|---|
 | `Missing ... in .env` when starting | Fill in the named values (step 5) and make sure `.env` is in the project folder. |
+| `APP_URL is not localhost, so set ALLOWED_GITHUB_USERS` | Add the GitHub logins allowed to sign in, comma-separated (see [Running it all the time](#running-it-all-the-time-for-your-team)). |
+| Sign-in says your account isn't on the list | Add your GitHub login to `ALLOWED_GITHUB_USERS` and restart. |
 | GitHub: **"The redirect_uri is not associated with this application"** | The callback URL in your OAuth App must be exactly `http://localhost:5173/auth/callback`. |
 | `Port 5173 is in use` | Stop whatever is using it. The port can't change without also changing your OAuth App URLs. |
 | `Sign-in failed: state_mismatch` | Start again from <http://localhost:5173> instead of an old GitHub tab. |
@@ -211,6 +252,7 @@ matches it are sent to that provider.
 
 ```bash
 npm test                 # unit tests (node --test, no framework)
+npm run build && npm start   # the production server on http://localhost:5173 (stop npm run dev first)
 npx vite build           # check that the frontend compiles
 node eval/rag-eval.js    # answer-quality check against a running dev server and the demo data
 ```
@@ -220,7 +262,9 @@ node eval/rag-eval.js    # answer-quality check against a running dev server and
 | `server.js` | Sign-in, the encrypted session cookie, the read-only GitHub proxy, and the API the UI calls |
 | `slack.js` | Reading Slack and syncing linked channels |
 | `bot.js` | The Slack bot: matching GitHub users to Slack users |
-| `alerts.js` | Overdue checks, the bot's messages, and receiving replies over Socket Mode |
+| `alerts.js` | Overdue checks, the bot's messages and digests, and receiving replies over Socket Mode |
+| `dates.js` | Reading an expected finish date out of a reply ("Friday", "Oct 9", "in 3 days") |
+| `start.js`, `Dockerfile` | The production server and container: the built app, the API and the background checks |
 | `rag.js`, `llm.js` | Search and answers: indexing, hybrid keyword and vector search, model providers |
 | `db.js`, `secrets.js` | The local SQLite database, and encryption for cookies and stored keys |
 | `src/main.jsx`, `src/style.css` | The whole interface |
