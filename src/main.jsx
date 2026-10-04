@@ -708,10 +708,10 @@ function ChatPanel({ repo, open, onClose }) {
   }, []);
 
   return (
-    <aside className="chat" data-open={open} aria-label="Chat">
+    <aside className="chat" data-open={open} aria-label="Ask" hidden={!open}>
       <header className="chat-head">
         <div>
-          <div className="chat-title">chat</div>
+          <div className="chat-title">Ask</div>
           <div className="chat-context">
             {repo ?? 'all repositories'} · <span className={`dot${linked.length ? ' on' : ''}`} aria-hidden="true" />{slackStatus}
           </div>
@@ -725,9 +725,9 @@ function ChatPanel({ repo, open, onClose }) {
         </div>
         <div className="chat-head-actions">
           {messages.length > 0 && !busy && (
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setThreads((t) => ({ ...t, [key]: [] }))}>new chat</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setThreads((t) => ({ ...t, [key]: [] }))}>New question</button>
           )}
-          <button type="button" className="btn btn-ghost btn-sm chat-close" onClick={onClose}>close</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onClose} aria-label="Close Ask">Close</button>
         </div>
       </header>
 
@@ -774,7 +774,7 @@ function ChatPanel({ repo, open, onClose }) {
             <button type="submit" className="send" disabled={!text.trim()} aria-label="Send"><ArrowUp /></button>
           )}
         </div>
-        <p className="composer-hint">enter to send · shift+enter for a new line · / to jump here</p>
+        <p className="composer-hint">Enter to send · Shift+Enter for a new line · {KEY}J to close</p>
       </form>
     </aside>
   );
@@ -954,83 +954,85 @@ function QuickSearch({ repo, onClose }) {
   );
 }
 
+const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
+const KEY = isMac ? '⌘' : 'Ctrl ';
+
 function Layout() {
   const nav = useNavigate();
   const { pathname } = useLocation();
   const { data: me } = useGitHub('user');
   const slack = useSlackState();
   const llm = useLlmSettings();
-  const [chatOpen, setChatOpen] = useState(false); // narrow screens: the chat overlay
   const [searching, setSearching] = useState(false);
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key.toLowerCase() === 'k' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); setSearching((v) => !v); }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+  // Ask is a side panel you open when you want it; the choice is remembered. The panel stays mounted while
+  // closed so conversations survive.
+  const [askOpen, setAskOpen] = useState(() => { try { return localStorage.getItem('ask') === 'open'; } catch { return false; } });
+  const showAsk = useCallback((open) => {
+    setAskOpen(open);
+    try { localStorage.setItem('ask', open ? 'open' : 'closed'); } catch {}
   }, []);
-  const [chatHidden, setChatHidden] = useState(() => { try { return localStorage.getItem('chat') === 'hidden'; } catch { return false; } });
-  const showChat = useCallback((hidden) => {
-    setChatHidden(hidden);
-    try { localStorage.setItem('chat', hidden ? 'hidden' : 'shown'); } catch {}
-  }, []);
-  // "/" anywhere (outside a text field) opens the chat and focuses it; "ask why" buttons open it too.
+  // ⌘K search, ⌘J Ask, "/" opens Ask and focuses it; "ask why" buttons open it too (git-help:ask).
   useEffect(() => {
-    const open = () => { showChat(false); setChatOpen(true); };
+    const focusAsk = () => requestAnimationFrame(() => window.dispatchEvent(new Event('git-help:focus')));
     const onKey = (e) => {
+      const k = e.key.toLowerCase();
+      if (k === 'k' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); setSearching((v) => !v); return; }
+      if (k === 'j' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); setAskOpen((v) => { const next = !v; if (next) focusAsk(); try { localStorage.setItem('ask', next ? 'open' : 'closed'); } catch {} return next; }); return; }
       if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey || e.target.closest?.('input, textarea, select, [contenteditable]')) return;
       e.preventDefault();
-      open();
-      requestAnimationFrame(() => window.dispatchEvent(new Event('git-help:focus')));
+      showAsk(true);
+      focusAsk();
     };
+    const open = () => showAsk(true);
     window.addEventListener('keydown', onKey);
     window.addEventListener('git-help:ask', open);
     return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('git-help:ask', open); };
-  }, [showChat]);
+  }, [showAsk]);
   const repo = pathname.match(/^\/repos\/([^/]+\/[^/]+)/)?.[1] ?? null;
   const logout = async () => {
     await fetch('/auth/logout', { method: 'POST' });
     nav('/');
   };
+  const model = llm.settings?.chat;
   return (
     <SlackContext.Provider value={slack}>
     <LlmContext.Provider value={llm}>
-      <div className="app">
-        <header className="topbar app-topbar">
+      <div className={`app${askOpen ? ' ask-open' : ''}`}>
+        <aside className="sidebar">
           <Brand to="/repos" />
-          <button type="button" className="search-trigger" onClick={() => setSearching(true)}>
-            <span>Search or jump to…</span><kbd>{/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl '}K</kbd>
+          <button type="button" className="side-search" onClick={() => setSearching(true)}>
+            <span>Search</span><kbd>{KEY}K</kbd>
           </button>
-          <nav className="nav">
-            <NavLink to="/repos">repos</NavLink>
-          <NavLink to="/settings">settings</NavLink>
-          <button type="button" className="btn btn-ghost btn-sm chat-toggle" aria-pressed={!chatHidden}
-            title={chatHidden ? 'Show chat (press /)' : 'Hide chat'} onClick={() => showChat(!chatHidden)}>chat</button>
-            {me && (
-              <span className="me">
-                <img src={me.avatar_url} alt="" width="20" height="20" />
-                {me.login}
-              </span>
-            )}
-            <button className="btn btn-ghost btn-sm" onClick={logout}>sign out</button>
+          <nav className="side-nav" aria-label="Main">
+            <NavLink to="/repos" end>Repositories</NavLink>
+            {repo && <NavLink to={`/repos/${repo}`} className="side-repo" title={repo}>{repo.split('/')[1]}</NavLink>}
+            <NavLink to="/settings">Settings</NavLink>
           </nav>
-        </header>
-        <div className={`shell${chatHidden ? ' no-chat' : ''}`}>
-          <div className="shell-main">
-            <main className="container">
-              <ErrorBoundary key={pathname}><Outlet /></ErrorBoundary>
-            </main>
-            <Toasts />
-            {searching && <QuickSearch repo={repo} onClose={() => setSearching(false)} />}
-            <Footer />
-          </div>
-          <ChatPanel repo={repo} open={chatOpen} onClose={() => setChatOpen(false)} />
-        </div>
-        {!chatOpen && (
-          <button type="button" className="chat-fab" onClick={() => setChatOpen(true)}>
-            ask{repo ? ` about ${repo.split('/')[1]}` : ''}
+          <button type="button" className="side-ask" aria-pressed={askOpen} onClick={() => showAsk(!askOpen)}>
+            <span>{askOpen ? 'Close Ask' : 'Ask a question'}</span><kbd>{KEY}J</kbd>
           </button>
-        )}
+          <div className="side-foot">
+            <div className="side-status">
+              <span>GitHub · read-only</span>
+              <span>Slack · {slack.status?.configured ? (slack.links.length ? `${plural(new Set(slack.links.map((l) => l.channel_id)).size, 'channel')} linked` : 'no channels linked') : 'not connected'}</span>
+              {model && <Link to="/settings">Model · {model.model}{model.provider === 'ollama' ? ' on this machine' : ''}</Link>}
+            </div>
+            <ThemeToggle />
+            {me && (
+              <div className="side-me">
+                <img src={me.avatar_url} alt="" width="20" height="20" />
+                <span>{me.login}</span>
+                <button type="button" className="link-like" onClick={logout}>Sign out</button>
+              </div>
+            )}
+          </div>
+        </aside>
+        <main className="page-body">
+          <ErrorBoundary key={pathname}><Outlet /></ErrorBoundary>
+        </main>
+        <ChatPanel repo={repo} open={askOpen} onClose={() => showAsk(false)} />
+        <Toasts />
+        {searching && <QuickSearch repo={repo} onClose={() => setSearching(false)} />}
       </div>
     </LlmContext.Provider>
     </SlackContext.Provider>
