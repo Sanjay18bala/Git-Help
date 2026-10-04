@@ -3,7 +3,8 @@
 import { db } from './db.js';
 import { bot, slackUserFor } from './bot.js';
 import { seal, unseal } from './secrets.js';
-import { daysLate, indexGithub, indexFollowups, localDate } from './rag.js';
+import { attention, daysLate, indexGithub, indexFollowups, localDate } from './rag.js';
+import { links as slackLinks } from './slack.js';
 
 const REMIND_AFTER_DAYS = 3; // one reminder if there's been no reply; then nothing until the due date changes
 const CHECK_EVERY_MS = 15 * 60_000;
@@ -168,13 +169,111 @@ export async function connectSocket(me = job()) {
   }
 }
 
+// ---------- digest: what's late, posted to the repo's linked Slack channels ----------
+
+export const DIGEST_HOUR = 9; // local time; the first background check after it posts
+export const digestSchedules = () => getSetting('digest', { repos: {} }).repos;
+export function setDigest(repo, schedule) {
+  const repos = { ...digestSchedules() };
+  if (schedule === 'off') delete repos[repo]; else repos[repo] = schedule;
+  putSetting('digest', { repos });
+}
+
+// Which digest is due at `now`: one per weekday ("daily") or one per week from Monday ("weekly"), never before
+// DIGEST_HOUR. Returns that period's id, or null when nothing is due yet.
+export function digestPeriod(schedule, now = new Date()) {
+  if (now.getHours() < DIGEST_HOUR) return null;
+  const day = now.getDay();
+  if (schedule === 'daily') return day === 0 || day === 6 ? null : localDate(now);
+  if (schedule === 'weekly') {
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - ((day + 6) % 7));
+    return `week of ${localDate(monday)}`;
+  }
+  return null;
+}
+
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const clip = (t, n) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
+const eventDay = (iso) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+// The digest message (Slack mrkdwn) for a repo, from the same data as the Overview. A daily digest with nothing
+// late and nothing due within 3 days returns null, so quiet days stay quiet; a weekly one always posts.
+export function digestText(repo, att, { schedule = 'weekly' } = {}) {
+  const name = repo.split('/')[1];
+  const late = att.overdue;
+  const soon = att.due_soon.filter((i) => schedule === 'weekly' || i.days_late >= -3);
+  if (schedule === 'daily' && !late.length && !soon.length) return null;
+  const lines = [];
+  const milestones = [...new Set(late.map((i) => i.milestone))];
+  lines.push(late.length
+    ? `*${esc(name)}* · ${plural(late.length, 'item')} past due${milestones.length === 1 ? ` in ${esc(milestones[0])}` : ''}`
+    : `*${esc(name)}* · nothing is past due`);
+  for (const i of late.slice(0, 10)) {
+    const who = i.assignees.join(', ');
+    const why = i.reason ? `${esc(i.reason.github_login)}: “${esc(clip(i.reason.text.replace(/\s+/g, ' '), 140))}”`
+      : !who ? 'no owner'
+        : i.alerted_at ? `${esc(who)} · asked ${eventDay(i.alerted_at)}, no reply` : `${esc(who)} · not asked yet`;
+    lines.push(`• <${i.url}|#${i.number} ${esc(i.title)}> · ${plural(i.days_late, 'day')} late · ${why}`);
+  }
+  if (late.length > 10) lines.push(`…and ${late.length - 10} more`);
+  const byMilestone = new Map();
+  for (const i of soon) byMilestone.set(i.milestone, [...(byMilestone.get(i.milestone) ?? []), i]);
+  for (const [m, items] of byMilestone) {
+    const days = -items[0].days_late;
+    lines.push(`Next up: ${esc(m)} due ${eventDay(`${items[0].due_on}T12:00:00`)} (${days === 0 ? 'today' : `in ${plural(days, 'day')}`}) · ${plural(items.length, 'item')}`);
+  }
+  return lines.join('\n');
+}
+
+// Post the digest to every channel linked to the repo. Returns one result per channel; a channel the bot can't
+// post in gets an instruction instead of failing the others.
+export async function sendDigest(repo, { period = null, schedule = 'weekly' } = {}) {
+  const text = digestText(repo, attention(repo), { schedule });
+  const channels = slackLinks().filter((l) => l.repo === repo);
+  const log = db().prepare('INSERT INTO digests (repo, channel_id, channel_name, period, sent_at, ts) VALUES (?, ?, ?, ?, ?, ?)');
+  if (!text) {
+    if (period) log.run(repo, '', null, period, new Date().toISOString(), null);
+    return [];
+  }
+  const results = [];
+  for (const c of channels) {
+    try {
+      const msg = await bot('chat.postMessage', { channel: c.channel_id, text, unfurl_links: 'false', unfurl_media: 'false' });
+      log.run(repo, c.channel_id, c.name, period, new Date().toISOString(), msg.ts);
+      results.push({ channel: c.name, ok: true });
+    } catch (e) {
+      results.push({ channel: c.name, ok: false,
+        error: e.message === 'not_in_channel' ? `Add the GitHelp bot to #${c.name} first: type /invite @GitHelp in that channel.` : e.message });
+    }
+  }
+  return results;
+}
+
+export const digestLog = (repo, limit = 5) => db().prepare(`SELECT channel_name, period, sent_at FROM digests
+  WHERE repo = ? AND channel_id != '' ORDER BY sent_at DESC LIMIT ?`).all(repo, limit);
+
+// Scheduled digests that are due and not yet posted for their period.
+export async function runDigests(now = new Date()) {
+  const done = db().prepare('SELECT 1 FROM digests WHERE repo = ? AND period = ?');
+  const sent = [];
+  for (const [repo, schedule] of Object.entries(digestSchedules())) {
+    const period = digestPeriod(schedule, now);
+    if (!period || done.get(repo, period)) continue;
+    sent.push({ repo, results: await sendDigest(repo, { period, schedule }) });
+  }
+  return sent;
+}
+
 // ---------- background ----------
 
 export async function checkNow() {
   const token = storedGithubToken();
   if (!token) return { skipped: 'no stored GitHub token yet: sign in once' };
-  for (const repo of alertRepos()) await indexGithub(repo, token); // fresh states and due dates before deciding
-  return { sent: await sendAlerts() };
+  const repos = new Set([...alertRepos(), ...Object.keys(digestSchedules())]);
+  for (const repo of repos) await indexGithub(repo, token); // fresh states and due dates before deciding
+  return { sent: await sendAlerts(), digests: await runDigests() };
 }
 
 export function stopBackground() {

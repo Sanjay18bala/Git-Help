@@ -447,9 +447,8 @@ export function repoOverview(repo, perGroup = 25) {
 
 // ---------- attention: what needs a human, for the Overview tab and the repo list ----------
 
-export function attention(repo, horizonDays = 14) {
+export function attention(repo, horizonDays = 14, today = localDate()) {
   const d = db();
-  const today = localDate();
   const items = d.prepare('SELECT * FROM items WHERE repo = ?').all(repo);
   const reasonOf = d.prepare('SELECT github_login, text, permalink, created_at FROM followups WHERE repo = ? AND number = ? ORDER BY created_at DESC LIMIT 1');
   const alertOf = d.prepare('SELECT sent_at FROM alerts WHERE repo = ? AND number = ? ORDER BY sent_at DESC LIMIT 1');

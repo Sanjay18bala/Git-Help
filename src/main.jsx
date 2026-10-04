@@ -930,7 +930,7 @@ function QuickSearch({ repo, onClose }) {
     results.push({ key: `n${num}`, group: 'Go to', icon: i && <StateIcon item={i} />, label: i ? `#${num} ${i.title}` : `#${num}`,
       run: go(`/repos/${repo}/${i?.pull_request ? 'pulls' : 'issues'}/${num}`) });
   }
-  const pages = [['Repositories', '/repos'], ['Settings', '/settings'],
+  const pages = [['Attention', '/attention'], ['Repositories', '/repos'], ['Settings', '/settings'],
     ...(repo ? Object.entries(TABS).map(([k, label]) => [`${label} · ${repo.split('/')[1]}`, `/repos/${repo}/${k === 'code' ? 'commits' : k}`]) : [])];
   for (const [label, to] of pages) if (hit(label)) results.push({ key: to, group: 'Pages', label, run: go(to) });
   if (repo && Array.isArray(items.data)) {
@@ -1011,6 +1011,11 @@ function Layout() {
     return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('git-help:ask', open); };
   }, [showAsk]);
   const repo = pathname.match(/^\/repos\/([^/]+\/[^/]+)/)?.[1] ?? null;
+  // Total past-due items across indexed repos, for the sidebar's Attention link.
+  const [lateTotal, setLateTotal] = useState(0);
+  useEffect(() => {
+    apiCached('/attention/summary').then((s) => setLateTotal(Object.values(s).reduce((n, c) => n + c.overdue, 0)), () => {});
+  }, [pathname]);
   const logout = async () => {
     await fetch('/auth/logout', { method: 'POST' });
     nav('/');
@@ -1026,6 +1031,7 @@ function Layout() {
             <span>Search</span><kbd>{KEY}K</kbd>
           </button>
           <nav className="side-nav" aria-label="Main">
+            <NavLink to="/attention" className="side-attention">Attention{lateTotal > 0 && <span className="side-count">{lateTotal}</span>}</NavLink>
             <NavLink to="/repos" end>Repositories</NavLink>
             {repo && <NavLink to={`/repos/${repo}`} className="side-repo" title={repo}>{repo.split('/')[1]}</NavLink>}
             <NavLink to="/settings">Settings</NavLink>
@@ -1241,6 +1247,72 @@ function RepoAlerts({ repo }) {
   );
 }
 
+// mrkdwn → what the channel will show: links become their text, *bold* plain, entities decoded.
+const slackPlain = (t) => t.replace(/<[^|>]+\|([^>]+)>/g, '$1').replace(/\*([^*\n]+)\*/g, '$1')
+  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+
+// Per repo: whether the bot posts a summary of what's late to the repo's linked channels, and when.
+function RepoDigest({ repo }) {
+  const [data, setData] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [results, setResults] = useState(null);
+  const [error, setError] = useState(null);
+  const load = useCallback(() => api(`/digest?${new URLSearchParams({ repo })}`).then(setData, (e) => setError(e.message)), [repo]);
+  useEffect(() => { load(); }, [load]);
+  const act = async (fn) => {
+    setBusy(true);
+    setError(null);
+    try { await fn(); await load(); } catch (e) { setError(e.message); } finally { setBusy(false); }
+  };
+  if (!data) return <li className="muted">{repo}</li>;
+  const noChannel = !data.channels.length;
+  const last = data.log[0];
+  return (
+    <li className="repo-digest">
+      <div className="digest-row">
+        <span className="person-login">{repo}</span>
+        <div className="field">
+          <select aria-label={`Digest for ${repo}`} value={data.schedule} disabled={busy || noChannel}
+            onChange={(e) => act(() => api('/digest', { method: 'PUT', body: { repo, schedule: e.target.value } }))}>
+            <option value="off">Off</option>
+            <option value="daily">Daily, on weekdays</option>
+            <option value="weekly">Weekly, on Mondays</option>
+          </select>
+        </div>
+        <button type="button" className="btn btn-sm" disabled={busy || noChannel}
+          onClick={() => act(async () => {
+            const r = await api('/digest/send', { method: 'POST', body: { repo } });
+            setResults(r.results);
+            const ok = r.results.filter((x) => x.ok).map((x) => `#${x.channel}`);
+            toast(ok.length ? `Posted to ${ok.join(', ')}` : 'Nothing was posted');
+          })}>
+          {busy ? 'Posting…' : 'Post now'}
+        </button>
+      </div>
+      <p className="muted">
+        {noChannel ? 'Link a Slack channel to this repository first.' : `Posts to ${data.channels.map((c) => `#${c}`).join(', ')}.`}
+        {last && ` Last posted ${shortTime(last.sent_at)} to #${last.channel_name}.`}
+      </p>
+      {error && <p className="error" role="alert">{error}</p>}
+      {results?.filter((r) => !r.ok).map((r) => <p key={r.channel} className="error" role="alert">#{r.channel}: {r.error}</p>)}
+      {data.preview && !noChannel && (
+        <details className="digest-preview">
+          <summary>Preview</summary>
+          <pre>{slackPlain(data.preview)}</pre>
+        </details>
+      )}
+    </li>
+  );
+}
+
+function DigestSettings() {
+  const [repos, setRepos] = useState(null);
+  useEffect(() => { api('/repos/indexed').then(setRepos, () => setRepos([])); }, []);
+  if (!repos) return <Skeleton />;
+  if (!repos.length) return <p className="muted">No repos indexed yet. Open a repo's Overview first.</p>;
+  return <ul className="list">{repos.map((r) => <RepoDigest key={r} repo={r} />)}</ul>;
+}
+
 function AlertSettings() {
   const [repos, setRepos] = useState(null);
   useEffect(() => { api('/repos/indexed').then(setRepos, () => setRepos([])); }, []);
@@ -1377,6 +1449,10 @@ function SettingsPage() {
         <BotSettings />
       </Setting>
 
+      <Setting title="Slack digest" desc="A short summary of what's late and why, posted by the bot to each repository's linked Slack channels at 9:00. It posts only while GitHelp is running.">
+        <DigestSettings />
+      </Setting>
+
       <Setting title="Overdue alerts" desc="When an issue passes its milestone date, the bot asks its assignee why, reminds them once after 3 days, and records the reply. Checks run every 15 minutes.">
         <AlertSettings />
       </Setting>
@@ -1453,13 +1529,13 @@ const word = (n) => WORDS[n] ?? String(n);
 const cap = (t) => t[0].toUpperCase() + t.slice(1);
 
 // The Overview's opening line: what is late and how much of it is explained, in words a lead reads in two seconds.
-function leadSentence({ counts, overdue, due_soon: soon }) {
+function leadSentence({ counts, overdue, due_soon: soon }, head = null) {
   if (!counts.overdue) {
     return soon.length ? `Nothing is past due. ${cap(plural(soon.length, 'item is', 'items are'))} due in the next two weeks.`
       : 'Nothing is past due, and nothing is due in the next two weeks.';
   }
   const milestones = [...new Set(overdue.map((i) => i.milestone))];
-  const head = `${plural(counts.overdue, 'item', 'items')}${milestones.length === 1 ? ` in ${milestones[0]}` : ''} ${counts.overdue === 1 ? 'is' : 'are'} past due.`;
+  head ??= `${plural(counts.overdue, 'item', 'items')}${milestones.length === 1 ? ` in ${milestones[0]}` : ''} ${counts.overdue === 1 ? 'is' : 'are'} past due.`;
   const reasoned = overdue.filter((i) => i.reason).length;
   const waiting = overdue.filter((i) => !i.reason && i.assignees.length).length;
   const unowned = overdue.filter((i) => !i.reason && !i.assignees.length).length;
@@ -1509,6 +1585,88 @@ function MilestoneLine({ overdue, soon }) {
   );
 }
 
+const itemLink = (repo, i) => `/repos/${repo}/${i.kind === 'pr' ? 'pulls' : 'issues'}/${i.number}`;
+
+// Late items with how late they are and either the owner's reason or exactly why there is none.
+function LateLedger({ repo, items, title, note }) {
+  const kind = (i) => (i.kind === 'pr' ? 'Pull request' : 'Issue');
+  return (
+    <section className="ledger">
+      <header className="ledger-head">
+        <h2>{title}</h2>
+        {note && <span>{note}</span>}
+      </header>
+      {items.map((i) => (
+        <div key={i.number} className="ledger-row">
+          <div className="ledger-item">
+            <Link to={itemLink(repo, i)} className="ledger-title"><Title text={i.title} /></Link>
+            <p className="ledger-meta">
+              <span className="ref">#{i.number}</span> · {kind(i)} · {i.assignees.length ? i.assignees.join(', ') : 'no owner'} · <span className="late-text">{plural(i.days_late, 'day')} late</span>
+            </p>
+          </div>
+          <div className="ledger-why">
+            {i.reason ? <Reason r={i.reason} /> : (
+              <>
+                <p className="muted">
+                  {!i.assignees.length ? 'No owner, so nobody has been asked.'
+                    : i.alerted_at ? `No reason yet. Asked ${dayMonth(i.alerted_at)}, no reply.`
+                      : 'No reason yet. Nobody has been asked.'}
+                </p>
+                <button type="button" className="btn btn-sm" onClick={() => askChat(`Why is #${i.number} late?`)}>
+                  {i.assignees.length ? "Ask why it's late" : 'Ask about it'}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+// Everything late across the repositories GitHelp has indexed, worst first.
+function AttentionPage() {
+  useTitle('Attention');
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  useEffect(() => { api('/attention/all').then(setData, (e) => setError(e.message)); }, []);
+  if (error) return <p className="error">{error}</p>;
+  if (!data) return <Skeleton rows={4} />;
+  const late = data.filter((r) => r.overdue.length).sort((a, b) => b.overdue.length - a.overdue.length);
+  const overdue = data.flatMap((r) => r.overdue);
+  const soon = data.flatMap((r) => r.due_soon);
+  const repos = new Set(late.map((r) => r.repo)).size;
+  const head = overdue.length ? `${plural(overdue.length, 'item')} ${overdue.length === 1 ? 'is' : 'are'} past due${repos > 1 ? ` across ${repos} repositories` : ` in ${late[0].repo.split('/')[1]}`}.` : null;
+  const upcoming = data.filter((r) => r.due_soon.length);
+  return (
+    <>
+      <h1>Attention</h1>
+      {!data.length ? (
+        <p className="muted">No repositories yet. Open a repository's Overview and it will show up here.</p>
+      ) : (
+        <>
+          <p className="lead-line">{leadSentence({ counts: { overdue: overdue.length }, overdue, due_soon: soon }, head)}</p>
+          {late.map((r) => (
+            <LateLedger key={r.repo} repo={r.repo} items={r.overdue}
+              title={<><Link to={`/repos/${r.repo}`}>{r.repo}</Link> · {plural(r.overdue.length, 'item')} past due</>} />
+          ))}
+          {upcoming.length > 0 && (
+            <section className="ledger">
+              <header className="ledger-head"><h2>Due in the next two weeks</h2></header>
+              {upcoming.flatMap((r) => r.due_soon.map((i) => (
+                <div key={`${r.repo}#${i.number}`} className="ledger-row compact">
+                  <div className="ledger-item"><Link to={itemLink(r.repo, i)}><Title text={i.title} /></Link> <span className="ref">{r.repo.split('/')[1]} #{i.number}</span></div>
+                  <div className="ledger-side">{i.milestone} · {i.days_late === 0 ? 'due today' : `in ${plural(-i.days_late, 'day')}`}</div>
+                </div>
+              )))}
+            </section>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
 function Attention({ repo }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -1530,36 +1688,7 @@ function Attention({ repo }) {
       <MilestoneLine overdue={data.overdue} soon={data.due_soon} />
 
       {data.overdue.length > 0 && (
-        <section className="ledger" aria-labelledby="late-h">
-          <header className="ledger-head">
-            <h2 id="late-h">Past due, and why</h2>
-            <span>Reasons come from owners' replies to the Slack bot</span>
-          </header>
-          {data.overdue.map((i) => (
-            <div key={i.number} className="ledger-row">
-              <div className="ledger-item">
-                <Link to={link(i)} className="ledger-title"><Title text={i.title} /></Link>
-                <p className="ledger-meta">
-                  <span className="ref">#{i.number}</span> · {kind(i)} · {owners(i)} · <span className="late-text">{plural(i.days_late, 'day')} late</span>
-                </p>
-              </div>
-              <div className="ledger-why">
-                {i.reason ? <Reason r={i.reason} /> : (
-                  <>
-                    <p className="muted">
-                      {!i.assignees.length ? 'No owner, so nobody has been asked.'
-                        : i.alerted_at ? `No reason yet. Asked ${dayMonth(i.alerted_at)}, no reply.`
-                          : 'No reason yet. Nobody has been asked.'}
-                    </p>
-                    <button type="button" className="btn btn-sm" onClick={() => askChat(`Why is #${i.number} late?`)}>
-                      {i.assignees.length ? "Ask why it's late" : 'Ask about it'}
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
-        </section>
+        <LateLedger repo={repo} items={data.overdue} title="Past due, and why" note="Reasons come from owners' replies to the Slack bot" />
       )}
 
       {[...bySoon].map(([milestone, items]) => (
@@ -2014,6 +2143,7 @@ createRoot(document.getElementById('root')).render(
       <Routes>
         <Route path="/" element={<Home />} />
         <Route element={<Layout />}>
+          <Route path="/attention" element={<AttentionPage />} />
           <Route path="/repos" element={<Repos />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/repos/:owner/:repo/:tab?" element={<Repo />} />

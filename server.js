@@ -258,6 +258,31 @@ api.post('/alerts/send', async (req, res) => {
   await rag.indexGithub(repo, req.token); // decide on fresh states and due dates
   res.json({ sent: (await alerts.sendAlerts()).filter((a) => a.repo === repo) });
 });
+// ---- Slack digest (see alerts.js) ----
+api.get('/digest', (req, res) => {
+  const repo = repoParam(req.query.repo);
+  const schedule = alerts.digestSchedules()[repo] ?? 'off';
+  res.json({
+    schedule,
+    channels: slack.links().filter((l) => l.repo === repo).map((l) => l.name),
+    preview: alerts.digestText(repo, rag.attention(repo), { schedule: schedule === 'daily' ? 'daily' : 'weekly' }),
+    log: alerts.digestLog(repo),
+  });
+});
+api.put('/digest', (req, res) => {
+  const schedule = req.body?.schedule;
+  if (!['off', 'daily', 'weekly'].includes(schedule)) throw Object.assign(new Error('schedule must be off, daily or weekly'), { status: 400 });
+  alerts.setDigest(repoParam(req.body?.repo), schedule);
+  res.json({ schedule });
+});
+api.post('/digest/send', async (req, res) => {
+  const repo = repoParam(req.body?.repo);
+  await rag.indexGithub(repo, req.token).catch(() => {}); // post fresh numbers; a failed refresh still posts the last index
+  res.json({ results: await alerts.sendDigest(repo) });
+});
+// Everything late across indexed repos, for the Attention page (local index only, so it's fast).
+api.get('/attention/all', (req, res) => res.json(indexedRepos().map((repo) => ({ repo, ...rag.attention(repo) }))));
+
 // Needs-attention data for a repo's Overview tab. Indexes on first visit; works without the chat models.
 api.get('/attention', async (req, res) => {
   const repo = repoParam(req.query.repo);

@@ -628,3 +628,18 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; backg
 .person-how .badge { border-color: var(--border); color: var(--muted); }
 .setting-body > .theme-switch { align-self: flex-start; }
 .setting-body .theme-switch button { padding: 6px 14px; font-size: 13px; }
+
+/* ---------- sidebar: Attention count ---------- */
+.side-nav .side-attention { display: flex; justify-content: space-between; align-items: center; }
+.side-count { min-width: 20px; padding: 0 6px; border-radius: var(--radius); color: var(--danger); font: 500 12px/18px var(--mono); text-align: right; }
+
+/* ---------- settings: digest ---------- */
+.digest-row { display: grid; grid-template-columns: minmax(0, 1fr) 210px auto; align-items: center; gap: 12px; }
+.repo-digest > .muted, .repo-digest > .error { margin: 6px 0 0; font-size: 13px; }
+.digest-preview { margin-top: 8px; }
+.digest-preview summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.digest-preview pre { margin: 8px 0 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel);
+  font: 13px/1.6 var(--sans); white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 560px) { .digest-row { grid-template-columns: minmax(0, 1fr); } }
+.ledger-head h2 a { color: inherit; }
+.page-body > h1 + .lead-line { margin-top: 12px; }

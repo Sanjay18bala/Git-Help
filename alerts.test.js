@@ -19,6 +19,7 @@ globalThis.fetch = async (url, init = {}) => {
   const p = Object.fromEntries(new URLSearchParams(init.body ?? ''));
   const ok = (b) => new Response(JSON.stringify({ ok: true, ...b }));
   if (method === 'conversations.open') return ok({ channel: { id: `D-${p.users}` } });
+  if (method === 'chat.postMessage' && p.channel === 'C-NOBOT') return new Response(JSON.stringify({ ok: false, error: 'not_in_channel' }));
   if (method === 'chat.postMessage') { posted.push(p); return ok({ ts: `${1_790_000_000 + posted.length}.000100` }); }
   if (method === 'chat.getPermalink') return ok({ permalink: `https://ws.slack.com/archives/${p.channel}/p${p.message_ts}` });
   throw new Error(`unexpected ${url}`);
@@ -79,5 +80,46 @@ alerts.rememberGithubToken('gho_secret');
 assert(!d.prepare("SELECT value FROM settings WHERE key = 'github'").get().value.includes('gho_secret'));
 alerts.forgetGithubToken();
 assert.equal(d.prepare("SELECT 1 FROM settings WHERE key = 'github'").get(), undefined);
+
+// ---------- digest ----------
+// When a scheduled digest is due: weekdays from 9:00 (daily), or once per week from Monday 9:00 (weekly).
+assert.equal(alerts.digestPeriod('daily', new Date(2026, 9, 5, 8, 59)), null, 'never before 9:00');
+assert.equal(alerts.digestPeriod('daily', new Date(2026, 9, 5, 9, 0)), '2026-10-05');
+assert.equal(alerts.digestPeriod('daily', new Date(2026, 9, 4, 12)), null, 'no daily digest on Sunday');
+assert.equal(alerts.digestPeriod('weekly', new Date(2026, 9, 8, 15)), 'week of 2026-10-05', 'weekly: the week from Monday');
+
+// The message: what's late and why (or why not), then what's next.
+const att = rag.attention('o/r', 14, today);
+assert.equal(alerts.digestText('o/r', att, { schedule: 'weekly' }), [
+  '*r* · 3 items past due in v1',
+  '• <https://github.com/o/r/issues/6|#6 Grind size> · 2 days late · no owner',
+  '• <https://github.com/o/r/issues/8|#8 Add CI> · 2 days late · zed · not asked yet',
+  '• <https://github.com/o/r/issues/14|#14 CSV breaks> · 2 days late · priya: “Waiting on review of the quoting fix”',
+  'Next up: v1 due Oct 15 (in 14 days) · 1 item',
+].join('\n'));
+assert.doesNotMatch(alerts.digestText('o/r', att, { schedule: 'daily' }), /Next up/, 'daily: only what is due within 3 days');
+const quiet = { ...att, overdue: [], due_soon: [] };
+assert.equal(alerts.digestText('o/r', quiet, { schedule: 'daily' }), null, 'a quiet day posts nothing');
+assert.equal(alerts.digestText('o/r', quiet, { schedule: 'weekly' }), '*r* · nothing is past due');
+
+// Posting: every linked channel; one the bot isn't in gets an instruction, the others still post.
+d.prepare("INSERT INTO channels (id, name, is_private) VALUES ('C-OK', 'dev', 0), ('C-NOBOT', 'random', 0)").run();
+d.prepare("INSERT INTO links VALUES ('o/r', 'C-OK', 'x'), ('o/r', 'C-NOBOT', 'x')").run();
+const before = posted.length;
+const results = await alerts.sendDigest('o/r');
+assert.deepEqual(results.map((r) => [r.channel, r.ok]), [['dev', true], ['random', false]]);
+assert.match(results[1].error, /\/invite @GitHelp/);
+assert.equal(posted.length, before + 1);
+assert.equal(posted.at(-1).channel, 'C-OK');
+assert.deepEqual(alerts.digestLog('o/r').map((l) => l.channel_name), ['dev']);
+
+// Scheduled: posts once per period, however often the background check runs.
+alerts.setDigest('o/r', 'weekly');
+const monday = new Date(2026, 9, 5, 10);
+assert.equal((await alerts.runDigests(monday)).length, 1);
+assert.equal((await alerts.runDigests(monday)).length, 0, 'not twice in the same week');
+assert.equal((await alerts.runDigests(new Date(2026, 9, 7, 10))).length, 0, 'still the same week');
+alerts.setDigest('o/r', 'off');
+assert.deepEqual(alerts.digestSchedules(), {});
 
 console.log('ok');

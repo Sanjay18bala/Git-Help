@@ -55,6 +55,12 @@ export function db() {
       github_login TEXT NOT NULL, slack_user_id TEXT NOT NULL, text TEXT NOT NULL, ts TEXT NOT NULL,
       permalink TEXT, created_at TEXT NOT NULL, UNIQUE (alert_id, ts));
 
+    -- Digests the bot posted to a repo's linked channels (alerts.js). period: the weekday or ISO week a scheduled
+    -- digest covers (NULL for "Post now"); a row with channel_id '' marks a scheduled digest skipped as empty.
+    CREATE TABLE IF NOT EXISTS digests (
+      id INTEGER PRIMARY KEY, repo TEXT NOT NULL, channel_id TEXT NOT NULL, channel_name TEXT, period TEXT,
+      sent_at TEXT NOT NULL, ts TEXT);
+
     -- Keyword search over chunks, kept in sync by triggers (embedding updates don't touch it).
     CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(title, text, content='chunks', content_rowid='rowid');
     CREATE TRIGGER IF NOT EXISTS chunks_ai AFTER INSERT ON chunks BEGIN
