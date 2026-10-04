@@ -1404,32 +1404,79 @@ const CODE_TABS = ['commits', 'branches', 'releases', 'contributors'];
 // Ask the chat panel a question from anywhere (e.g. "ask why" on an overdue issue). ChatPanel listens.
 const askChat = (question) => window.dispatchEvent(new CustomEvent('git-help:ask', { detail: question }));
 
+const dayMonth = (iso) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+
 function Reason({ r }) {
   return (
-    <blockquote className="reason">
-      “{r.text}”
-      <span className="reason-meta"> {r.github_login}, {new Date(r.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}{r.permalink && <> · <Ext href={r.permalink}>slack ↗</Ext></>}</span>
-    </blockquote>
+    <div className="reason">
+      <p className="reason-text">“{r.text}”</p>
+      <p className="reason-meta">{r.github_login}, {dayMonth(r.created_at)}{r.permalink && <> · <Ext href={r.permalink}>Open in Slack</Ext></>}</p>
+    </div>
   );
 }
 
-function Tile({ n, label, to, tone }) {
-  const body = <><span className="tile-n">{n}</span><span className="tile-label">{label}</span></>;
-  const cls = `tile${tone && n > 0 ? ` ${tone}` : ''}`;
-  return to ? <Link to={to} className={cls}>{body}</Link> : <div className={cls}>{body}</div>;
+// Issue titles use Markdown backticks for code ("Colorize `brewlog list` output"); show those as code.
+const Title = ({ text }) => text.split(/`([^`]+)`/).map((part, i) => (i % 2 ? <code key={i}>{part}</code> : part));
+
+const WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+const word = (n) => WORDS[n] ?? String(n);
+const cap = (t) => t[0].toUpperCase() + t.slice(1);
+
+// The Overview's opening line: what is late and how much of it is explained, in words a lead reads in two seconds.
+function leadSentence({ counts, overdue, due_soon: soon }) {
+  if (!counts.overdue) {
+    return soon.length ? `Nothing is past due. ${cap(plural(soon.length, 'item is', 'items are'))} due in the next two weeks.`
+      : 'Nothing is past due, and nothing is due in the next two weeks.';
+  }
+  const milestones = [...new Set(overdue.map((i) => i.milestone))];
+  const head = `${plural(counts.overdue, 'item', 'items')}${milestones.length === 1 ? ` in ${milestones[0]}` : ''} ${counts.overdue === 1 ? 'is' : 'are'} past due.`;
+  const reasoned = overdue.filter((i) => i.reason).length;
+  const waiting = overdue.filter((i) => !i.reason && i.assignees.length).length;
+  const unowned = overdue.filter((i) => !i.reason && !i.assignees.length).length;
+  const parts = [
+    reasoned && `${word(reasoned)} ${reasoned === 1 ? 'has a reason' : 'have reasons'} from ${reasoned === 1 ? 'its owner' : 'their owners'}`,
+    waiting && `${word(waiting)} ${waiting === 1 ? 'is' : 'are'} waiting on a reply`,
+    unowned && `${word(unowned)} ${unowned === 1 ? 'has' : 'have'} no owner`,
+  ].filter(Boolean);
+  const tail = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0];
+  return `${head} ${cap(tail)}.`;
 }
 
-// One sentence a PM can read in two seconds, built from the same numbers as the tiles.
-function attentionSentence({ counts, overdue }) {
-  if (!counts.overdue) {
-    return counts.due_soon ? `Nothing is overdue. ${plural(counts.due_soon, 'item is', 'items are')} due in the next two weeks.` : 'Nothing is overdue, and nothing is due in the next two weeks.';
+// Milestones on a dated line with today marked: shows at a glance how far past (or before) each deadline we are.
+function MilestoneLine({ overdue, soon }) {
+  const ms = new Map();
+  for (const i of [...overdue, ...soon]) {
+    if (!i.due_on) continue;
+    const m = ms.get(i.milestone) ?? { name: i.milestone, due: i.due_on, late: i.days_late > 0, days: i.days_late, open: 0 };
+    m.open += 1;
+    ms.set(i.milestone, m);
   }
-  const explained = overdue.filter((i) => i.reason).length;
-  const milestones = [...new Set(overdue.map((i) => i.milestone))];
-  return `${plural(counts.overdue, 'item is', 'items are')} overdue${milestones.length === 1 ? `, all in ${milestones[0]}` : ''}. `
-    + (explained === counts.overdue ? 'Every one has a reason from its assignee.'
-      : explained ? `${explained} ${explained === 1 ? 'has a reason' : 'have reasons'} from the assignee; ${counts.overdue - explained} ${counts.overdue - explained === 1 ? "doesn't" : "don't"} yet.`
-        : 'None has a reason from the assignee yet.');
+  if (!ms.size) return null;
+  const day = (ymd) => Date.parse(`${ymd}T12:00:00`);
+  const today = day(localDay());
+  const times = [...ms.values()].map((m) => day(m.due)).concat(today);
+  const pad = 3 * 86_400_000;
+  const lo = Math.min(...times) - pad;
+  const hi = Math.max(...times) + pad;
+  const at = (t) => ((t - lo) / (hi - lo)) * 100;
+  const anchor = (x) => (x < 18 ? 'start' : x > 82 ? 'end' : 'middle');
+  return (
+    <div className="ms-line" role="img" aria-label={[...ms.values()].map((m) => `${m.name} due ${shortDay(m.due)}${m.late ? `, ${plural(m.days, 'day')} late` : ''}`).join('; ')}>
+      <div className="ms-rule" />
+      <div className="ms-today" style={{ left: `${at(today)}%` }}><span className={`ms-label below today ${anchor(at(today))}`}>Today</span></div>
+      {[...ms.values()].map((m) => {
+        const x = at(day(m.due));
+        return (
+          <div key={m.name} className={`ms-point${m.late ? ' late' : ''}`} style={{ left: `${x}%` }}>
+            <span className={`ms-label above ${anchor(x)}`}><b>{m.name}</b> {shortDay(m.due)}</span>
+            <span className={`ms-label below ${anchor(x)}${m.late ? ' late-text' : ''}`}>
+              {m.late ? `${plural(m.days, 'day')} late` : `${plural(m.open, 'item')} · ${m.days === 0 ? 'due today' : `in ${plural(-m.days, 'day')}`}`}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function Attention({ repo }) {
@@ -1443,73 +1490,72 @@ function Attention({ repo }) {
   }, [repo]);
   const link = (i) => `/repos/${repo}/${i.kind === 'pr' ? 'pulls' : 'issues'}/${i.number}`;
   if (error) return <p className="error">{error}</p>;
-  if (!data) return <div className="tiles">{[0, 1, 2, 3].map((k) => <div key={k} className="tile skeleton" />)}</div>;
-  const { counts } = data;
+  if (!data) return <Skeleton rows={3} />;
+  const kind = (i) => (i.kind === 'pr' ? 'Pull request' : 'Issue');
+  const owners = (i) => (i.assignees.length ? i.assignees.join(', ') : 'no owner');
+  const bySoon = Map.groupBy ? Map.groupBy(data.due_soon, (i) => i.milestone) : new Map([[null, data.due_soon]]);
   return (
     <>
-      <div className="tiles">
-        <Tile n={counts.open_issues} label="open issues" to={`/repos/${repo}/issues`} />
-        <Tile n={counts.open_prs} label="open pull requests" to={`/repos/${repo}/pulls`} />
-        <Tile n={counts.overdue} label="overdue" tone="late" />
-        <Tile n={counts.due_soon} label="due in 14 days" tone="soon" />
-      </div>
-      <p className="attention-line">{attentionSentence(data)}</p>
+      <p className="lead-line">{leadSentence(data)}</p>
+      <MilestoneLine overdue={data.overdue} soon={data.due_soon} />
 
       {data.overdue.length > 0 && (
-        <>
-          <h3>Needs attention</h3>
-          <ul className="list">
-            {data.overdue.map((i) => (
-              <li key={i.number}>
-                <Link to={link(i)}>#{i.number} {i.title}</Link>
-                <span className="badge late">overdue {i.days_late}d</span>
-                <span className="muted">
-                  {i.kind === 'pr' ? 'pull request' : 'issue'} · {i.milestone} (due {shortDay(i.due_on)})
-                  {i.assignees.length ? ` · ${i.assignees.join(', ')}` : ' · nobody assigned'}
-                  {i.alerted_at && !i.reason && ` · bot asked ${new Date(i.alerted_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}
-                </span>
+        <section className="ledger" aria-labelledby="late-h">
+          <header className="ledger-head">
+            <h2 id="late-h">Past due, and why</h2>
+            <span>Reasons come from owners' replies to the Slack bot</span>
+          </header>
+          {data.overdue.map((i) => (
+            <div key={i.number} className="ledger-row">
+              <div className="ledger-item">
+                <Link to={link(i)} className="ledger-title"><Title text={i.title} /></Link>
+                <p className="ledger-meta">
+                  <span className="ref">#{i.number}</span> · {kind(i)} · {owners(i)} · <span className="late-text">{plural(i.days_late, 'day')} late</span>
+                </p>
+              </div>
+              <div className="ledger-why">
                 {i.reason ? <Reason r={i.reason} /> : (
-                  <button type="button" className="btn btn-sm ask-btn" onClick={() => askChat(`Why isn't #${i.number} done yet?`)}>ask why →</button>
+                  <>
+                    <p className="muted">
+                      {!i.assignees.length ? 'No owner, so nobody has been asked.'
+                        : i.alerted_at ? `No reason yet. Asked ${dayMonth(i.alerted_at)}, no reply.`
+                          : 'No reason yet. Nobody has been asked.'}
+                    </p>
+                    <button type="button" className="btn btn-sm" onClick={() => askChat(`Why is #${i.number} late?`)}>
+                      {i.assignees.length ? "Ask why it's late" : 'Ask about it'}
+                    </button>
+                  </>
                 )}
-              </li>
-            ))}
-          </ul>
-        </>
+              </div>
+            </div>
+          ))}
+        </section>
       )}
 
-      {data.due_soon.length > 0 && (
-        <>
-          <h3>Due soon</h3>
-          <ul className="list">
-            {data.due_soon.map((i) => (
-              <li key={i.number}>
-                <Link to={link(i)}>#{i.number} {i.title}</Link>
-                <span className="badge soon">{i.days_late === 0 ? 'due today' : `in ${plural(-i.days_late, 'day')}`}</span>
-                <span className="muted">{i.milestone} (due {shortDay(i.due_on)}){i.assignees.length ? ` · ${i.assignees.join(', ')}` : ''}</span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
+      {[...bySoon].map(([milestone, items]) => (
+        <section key={milestone ?? 'soon'} className="ledger" aria-label={`Due soon${milestone ? `: ${milestone}` : ''}`}>
+          <header className="ledger-head">
+            <h2>Next up{milestone ? ` · ${milestone}, due ${new Date(`${items[0].due_on}T12:00:00`).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}` : ''}</h2>
+          </header>
+          {items.map((i) => (
+            <div key={i.number} className="ledger-row compact">
+              <div className="ledger-item"><Link to={link(i)}><Title text={i.title} /></Link> <span className="ref">#{i.number}</span></div>
+              <div className="ledger-side">{i.draft ? 'Draft pull request' : kind(i)} · {owners(i)}</div>
+            </div>
+          ))}
+        </section>
+      ))}
 
-      {(data.review.length > 0 || data.drafts.length > 0) && (
-        <>
-          <h3>Pull requests</h3>
-          <ul className="list">
-            {data.review.map((i) => (
-              <li key={i.number}>
-                <Link to={link(i)}>#{i.number} {i.title}</Link>
-                <span className="muted">ready for review{i.due_on ? ` · ${i.milestone} (due ${shortDay(i.due_on)})` : ''}</span>
-              </li>
-            ))}
-            {data.drafts.map((i) => (
-              <li key={i.number}>
-                <Link to={link(i)}>#{i.number} {i.title}</Link><span className="badge warn">draft</span>
-                <span className="muted">still in progress</span>
-              </li>
-            ))}
-          </ul>
-        </>
+      {data.review.length > 0 && (
+        <section className="ledger" aria-labelledby="review-h">
+          <header className="ledger-head"><h2 id="review-h">Waiting for review</h2></header>
+          {data.review.map((i) => (
+            <div key={i.number} className="ledger-row compact">
+              <div className="ledger-item"><Link to={link(i)}><Title text={i.title} /></Link> <span className="ref">#{i.number}</span></div>
+              <div className="ledger-side">{owners(i)}</div>
+            </div>
+          ))}
+        </section>
       )}
     </>
   );
@@ -1523,7 +1569,7 @@ function Overview({ base }) {
   return (
     <>
       <Attention repo={base.slice('repos/'.length)} />
-      <h3>About</h3>
+      <h3>About this repository</h3>
       {info.description && <p>{info.description}</p>}
       <p className="muted">
         {info.visibility} · default branch <code>{info.default_branch}</code> · ★ {info.stargazers_count} ·{' '}

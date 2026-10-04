@@ -344,21 +344,43 @@ input::placeholder { color: var(--muted); }
 .alert-log li { padding: 4px 0; }
 .alert-log .muted { display: inline !important; font: 12px var(--mono) !important; }
 
-/* ---------- overview: needs attention ---------- */
-.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 4px 0 16px; }
-.tile { display: flex; flex-direction: column; gap: 2px; padding: 16px 16px; border: 1px solid var(--border); border-radius: var(--radius); text-decoration: none; color: var(--fg); min-height: 78px; }
-a.tile:hover { border-color: var(--fg); }
-.tile-n { font: 600 28px/1.1 var(--sans); letter-spacing: -0.03em; }
-.tile-label { font: 12px var(--mono); color: var(--muted); }
-.tile.late { border-color: var(--danger); }
-.tile.late .tile-n { color: var(--danger); }
-.tile.soon .tile-n { color: var(--warn); }
-.tile.skeleton { background: var(--subtle); border-color: transparent; }
-.attention-line { margin: 0 0 8px; color: var(--fg); font-size: 15px; }
+/* ---------- overview: lead line, milestone line, ledgers ---------- */
+.lead-line { margin: 4px 0 0; max-width: 34ch; font-size: clamp(20px, 2.2vw, 26px); line-height: 1.35; font-weight: 500; letter-spacing: -0.01em; }
 .late-text { color: var(--danger); }
-.reason { margin: 8px 0 0; padding: 2px 0 2px 12px; border-left: 2px solid var(--ok); font-size: 15px; color: var(--fg); }
-.reason-meta { font: 12px var(--mono); color: var(--muted); }
-@media (max-width: 700px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ref { font: 12px var(--mono); color: var(--muted); }
+
+.ms-line { position: relative; height: 72px; margin: 32px 0 8px; }
+.ms-rule { position: absolute; left: 0; right: 0; top: 33px; height: 1px; background: var(--border); }
+.ms-point, .ms-today { position: absolute; top: 0; bottom: 0; width: 0; }
+.ms-point::before { content: ''; position: absolute; top: 27px; left: -6px; width: 11px; height: 11px; border-radius: 50%; border: 1px solid var(--fg); background: var(--bg); }
+.ms-point.late::before { border-color: var(--danger); background: var(--danger); }
+.ms-today::before { content: ''; position: absolute; top: 20px; left: 0; width: 1px; height: 27px; background: var(--fg); }
+.ms-label { position: absolute; font-size: 12px; white-space: nowrap; color: var(--muted); }
+.ms-label b { color: var(--fg); font-weight: 600; }
+.ms-label.above { top: 0; }
+.ms-label.below { top: 50px; }
+.ms-today .ms-label { color: var(--fg); }
+@media (max-width: 600px) { .ms-label.today { display: none; } } /* the tick stays; the label would collide with a nearby milestone */
+.ms-label.start { left: -6px; } .ms-label.middle { left: 0; transform: translateX(-50%); } .ms-label.end { right: -6px; }
+
+.ledger { margin-top: 40px; }
+.ledger-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; padding-bottom: 10px; border-bottom: 1px solid var(--fg); }
+.ledger-head h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.ledger-head span { font-size: 12px; color: var(--muted); }
+.ledger-row { display: flex; flex-wrap: wrap; gap: 8px 32px; padding: 16px 0; border-bottom: 1px solid var(--border); }
+.ledger-row.compact { justify-content: space-between; align-items: baseline; padding: 12px 0; }
+.ledger-item { flex: 1 1 300px; min-width: 0; }
+.ledger-title { font-weight: 500; text-decoration: none; }
+.ledger-title:hover, .ledger-row a:hover { text-decoration: underline; }
+.ledger-row.compact a { text-decoration: none; }
+.ledger-meta { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+.ledger-why { flex: 1 1 320px; min-width: 0; }
+.ledger-why .muted { margin: 0; }
+.ledger-why .btn { margin-top: 8px; }
+.ledger-side { font-size: 12px; color: var(--muted); }
+.reason-text { margin: 0; font-size: 17px; line-height: 1.4; }
+.reason-meta { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+.reason-meta a { color: inherit; }
 
 /* code sub-tabs reuse the toggle look, as links */
 .toggle a { padding: 4px 16px; font: 12px var(--mono); color: var(--muted); text-decoration: none; }
