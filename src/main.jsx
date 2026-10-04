@@ -1039,7 +1039,6 @@ function Layout() {
               <span>Slack · {slack.status?.configured ? (slack.links.length ? `${plural(new Set(slack.links.map((l) => l.channel_id)).size, 'channel')} linked` : 'no channels linked') : 'not connected'}</span>
               {model && <Link to="/settings">Model · {model.model}{model.provider === 'ollama' ? ' on this machine' : ''}</Link>}
             </div>
-            <ThemeToggle />
             {me && (
               <div className="side-me">
                 <img src={me.avatar_url} alt="" width="20" height="20" />
@@ -1303,6 +1302,10 @@ function SettingsPage() {
   return (
     <div className="settings">
       <h1>Settings</h1>
+
+      <Setting title="Appearance" desc="Applies right away and is remembered on this browser.">
+        <ThemeToggle />
+      </Setting>
 
       <form onSubmit={(e) => { e.preventDefault(); save(false); }}>
         <Setting title="Chat model" desc="Answers questions in Ask.">

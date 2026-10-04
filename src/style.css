@@ -626,3 +626,5 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; backg
 /* Chrome draws a black arrow on inputs with suggestions; suggestions still show while typing */
 .field input[list]::-webkit-calendar-picker-indicator { display: none !important; }
 .person-how .badge { border-color: var(--border); color: var(--muted); }
+.setting-body > .theme-switch { align-self: flex-start; }
+.setting-body .theme-switch button { padding: 6px 14px; font-size: 13px; }
