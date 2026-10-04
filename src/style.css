@@ -293,33 +293,55 @@ input::placeholder { color: var(--muted); }
 .sources li { margin: 4px 0; color: var(--muted); }
 .sources .badge { margin: 0 4px 0 0; }
 
-/* ---------- settings ---------- */
-.settings { max-width: 560px; }
-.settings .section { margin-top: 40px; }
-.field { margin: 0 0 16px; }
+/* ---------- settings: sections with a description column ---------- */
+.settings { max-width: 980px; }
+.settings > h1 { margin-bottom: 24px; }
+.setting { display: grid; grid-template-columns: minmax(0, 260px) minmax(0, 1fr); gap: 12px 48px; padding: 28px 0; border-top: 1px solid var(--border); }
+.setting-info h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.setting-info p { margin: 4px 0 0; font-size: 13px; line-height: 1.5; color: var(--muted); }
+.setting-body { display: flex; flex-direction: column; gap: 16px; max-width: 560px; min-width: 0; }
+.setting-status { margin: 0; color: var(--muted); }
+.setting-status b { color: var(--fg); font-weight: 500; }
+.setting-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.setting-body .alert, .setting-body .hint { margin: 0; }
+.test-results { margin: 0; padding: 0; list-style: none; font-size: 13px; display: grid; gap: 4px; }
+@media (max-width: 860px) { .setting { grid-template-columns: minmax(0, 1fr); } }
+
+.field { margin: 0; min-width: 0; }
 .field label { display: block; margin-bottom: 6px; font: 500 13px var(--sans); color: var(--fg); }
-.field-row { display: flex; align-items: center; gap: 12px; }
-.field-row input { flex: 1; }
-.field input, .field select {
-  width: 100%; padding: 8px 12px;
+.field-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 560px) { .field-pair { grid-template-columns: minmax(0, 1fr); } }
+.field-row { display: flex; align-items: center; gap: 8px; }
+.field-row input { flex: 1; min-width: 0; }
+/* one control style for text inputs and selects: compact, 3:1 border, a soft ring on focus */
+.field input, .field select, .person select {
+  width: 100%; height: 34px; padding: 0 10px;
   border: 1px solid var(--control); border-radius: var(--radius);
-  background: var(--bg); color: var(--fg); font: 14px var(--sans);
-  transition: border-color .15s;
+  background-color: var(--bg); color: var(--fg); font: 14px var(--sans);
+  transition: border-color .12s, box-shadow .12s;
 }
-.field input:focus, .field select:focus { outline: none; border-color: var(--fg); }
-.field .hint, .settings > .hint { display: block; margin: 6px 0 0; font: 12px/1.5 var(--sans); color: var(--muted); }
-.settings .alert { margin-top: 32px; }
-.settings .actions { margin-top: 32px; }
+.field input:hover, .field select:hover, .person select:hover { border-color: var(--fg); }
+.field input:focus, .field select:focus, .person select:focus { outline: none; border-color: var(--fg); box-shadow: 0 0 0 3px var(--subtle); }
+.field input::placeholder { color: var(--muted); }
+.field select, .person select {
+  appearance: none; padding-right: 30px; cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 15px) 50%, calc(100% - 10px) 50%; background-size: 5px 5px; background-repeat: no-repeat;
+}
+.field .hint, .settings .hint { display: block; margin: 6px 0 0; font: 12px/1.5 var(--sans); color: var(--muted); }
 
 /* ---------- settings: people ---------- */
-.people .person { display: grid; grid-template-columns: minmax(0, 1fr) 200px minmax(0, 1fr); align-items: center; gap: 12px; padding: 12px 0; }
+.people { margin: 0; }
+.people .person { display: grid; grid-template-columns: minmax(0, 1fr) 220px minmax(0, 1fr); align-items: center; gap: 12px; padding: 10px 0; }
+.people .person:first-child { padding-top: 0; }
 .person-login { font: 500 14px var(--sans); overflow-wrap: anywhere; }
-.person select { padding: 6px 8px; border: 1px solid var(--control); border-radius: var(--radius); background: var(--bg); color: var(--fg); font: 13px var(--sans); }
-.person-how { display: flex; align-items: center; gap: 12px; }
+.person select { height: 32px; font-size: 13px; }
+.person-how { display: flex; align-items: center; gap: 8px; }
 .person-how .badge { margin: 0; }
 @media (max-width: 560px) { .people .person { grid-template-columns: 1fr; gap: 6px; } }
 
 /* ---------- settings: overdue alerts ---------- */
+.setting-body > .list > li:first-child { padding-top: 0; }
 .repo-alerts .muted, .repo-alerts .error { display: block; margin: 6px 0 0; font: 13px/1.5 var(--sans); }
 .toggle-row { display: flex; align-items: center; gap: 12px; font: 500 14px var(--sans); cursor: pointer; }
 .toggle-row input { width: 16px; height: 16px; accent-color: var(--fg); }
@@ -601,3 +623,6 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; backg
   background: var(--muted); transform-origin: left; animation: demo-progress 4.5s linear; }
 @keyframes demo-progress { from { transform: scaleX(0); } }
 @media (prefers-reduced-motion: reduce) { .demo-steps.auto button[aria-selected="true"]::after { display: none; } }
+/* Chrome draws a black arrow on inputs with suggestions; suggestions still show while typing */
+.field input[list]::-webkit-calendar-picker-indicator { display: none !important; }
+.person-how .badge { border-color: var(--border); color: var(--muted); }

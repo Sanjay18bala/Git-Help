@@ -1082,9 +1082,20 @@ const toPatch = (f) => ({
   anthropic: { key: f.clear.anthropic ? null : f.anthropicKey || undefined },
 });
 
+// A settings section: what it is on the left, its fields on the right (stacked on narrow screens).
+const Setting = ({ title, desc, children }) => (
+  <section className="setting">
+    <div className="setting-info"><h2>{title}</h2>{desc && <p>{desc}</p>}</div>
+    <div className="setting-body">{children}</div>
+  </section>
+);
+
+// Short local times for logs: "Oct 1, 7:19 PM".
+const shortTime = (iso) => new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
 function KeyField({ label, id, state, value, cleared, onChange, onClear }) {
-  const hint = cleared ? 'will be removed on save' : state === 'saved' ? 'saved: leave blank to keep it'
-    : state === 'env' ? 'from .env: enter one to override' : 'not set';
+  const hint = cleared ? 'Will be removed when you save' : state === 'saved' ? 'Saved. Leave blank to keep it'
+    : state === 'env' ? 'Set in .env. Enter one to override' : 'Not set';
   return (
     <div className="field">
       <label htmlFor={id}>{label}</label>
@@ -1108,7 +1119,7 @@ function ModelField({ id, label, value, options, onChange, hint }) {
   );
 }
 
-const MATCH_LABEL = { email: 'same email', name: 'same name', handle: 'same handle', 'first-name': 'first name only', manual: 'set by you' };
+const MATCH_LABEL = { email: 'Matched by email', name: 'Matched by name', handle: 'Matched by handle', 'first-name': 'First name only', manual: 'Set by you' };
 
 // Who the bot may message: GitHub logins linked to Slack users. Uncertain matches wait for a confirm.
 function BotSettings() {
@@ -1145,9 +1156,8 @@ function BotSettings() {
   }
   return (
     <>
-      <p className="muted">
-        Connected as <b>@{status.user}</b> in {status.team}{status.socket ? '' : ' · SLACK_APP_TOKEN missing: replies can\'t be received'}.
-        The bot only messages people with a confirmed link.
+      <p className="setting-status">
+        Connected as <b>@{status.user}</b> in {status.team}{status.socket ? '' : '. SLACK_APP_TOKEN is missing, so replies can\'t be received'}.
       </p>
       {error && <p className="error" role="alert">{error}</p>}
       {!data ? <p className="muted">Loading people…</p> : (
@@ -1158,21 +1168,21 @@ function BotSettings() {
               <span className="person-login">{p.github_login}</span>
               <select aria-label={`Slack user for ${p.github_login}`} value={p.slack_user_id ?? ''} disabled={busy}
                 onChange={(e) => setLink(p.github_login, e.target.value)}>
-                <option value="">can't notify</option>
+                <option value="">Don't notify</option>
                 {data.slackUsers.map((u) => <option key={u.id} value={u.id}>{u.display || u.real || u.handle}</option>)}
               </select>
               <span className="person-how">
                 {p.slack_user_id && <span className={`badge ${p.confirmed ? 'ok' : 'soon'}`}>{MATCH_LABEL[p.method] ?? p.method}</span>}
                 {p.slack_user_id && !p.confirmed && (
-                  <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setLink(p.github_login, p.slack_user_id)}>confirm</button>
+                  <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setLink(p.github_login, p.slack_user_id)}>Confirm</button>
                 )}
               </span>
             </li>
           ))}
         </ul>
       )}
-      <div className="actions">
-        <button type="button" className="btn btn-primary" disabled={busy} onClick={() => run(async () => { const r = await api('/people/match', { method: 'POST' }); toast('People matched'); return r; })}>
+      <div>
+        <button type="button" className="btn" disabled={busy} onClick={() => run(async () => { const r = await api('/people/match', { method: 'POST' }); toast('People matched'); return r; })}>
           {busy ? 'Matching…' : 'Match people from indexed repos'}
         </button>
       </div>
@@ -1192,7 +1202,7 @@ function RepoAlerts({ repo }) {
     setError(null);
     try { await fn(); await load(); } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
-  if (!data) return <li className="muted">{repo} · loading…</li>;
+  if (!data) return <li className="muted">{repo}</li>;
   return (
     <li className="repo-alerts">
       <label className="toggle-row">
@@ -1205,7 +1215,7 @@ function RepoAlerts({ repo }) {
         <>
           <p className="muted">
             {data.send.length
-              ? `Would message now: ${data.send.map((a) => `${a.login} about #${a.number} (${a.days_late}d late${a.kind === 'reminder' ? ', reminder' : ''})`).join('; ')}.`
+              ? `Would message now: ${data.send.map((a) => `${a.login} about #${a.number} (${plural(a.days_late, 'day')} late${a.kind === 'reminder' ? ', reminder' : ''})`).join('; ')}.`
               : 'Nobody to message right now.'}
           </p>
           {data.cannot.length > 0 && (
@@ -1220,8 +1230,8 @@ function RepoAlerts({ repo }) {
             <ul className="alert-log">
               {data.log.map((a) => (
                 <li key={a.id}>
-                  <span className="muted">{dateTime(a.sent_at)} · {a.kind} to {a.github_login} about #{a.number}</span>
-                  {a.reply ? <p className="slack-text">“{a.reply}”</p> : <span className="muted"> · no reply yet</span>}
+                  <span className="muted">{shortTime(a.sent_at)} · {a.kind === 'reminder' ? 'Reminded' : 'Asked'} {a.github_login} about #{a.number}</span>
+                  {a.reply ? <p className="slack-text">“{a.reply}”</p> : <span className="muted"> · No reply yet</span>}
                 </li>
               ))}
             </ul>
@@ -1236,17 +1246,8 @@ function AlertSettings() {
   const [repos, setRepos] = useState(null);
   useEffect(() => { api('/repos/indexed').then(setRepos, () => setRepos([])); }, []);
   if (!repos) return <Skeleton />;
-  if (!repos.length) return <p className="muted">No repos indexed yet: open a repo and ask the chat about it first.</p>;
-  return (
-    <>
-      <p className="muted">
-        When an open issue passes its milestone due date, the bot DMs each assignee with a confirmed Slack link and asks
-        what's holding it up. One reminder after 3 days without a reply, then nothing until the date changes. Replies show
-        on the issue and in the chat. Checks run every 15 minutes while the app is running.
-      </p>
-      <ul className="list">{repos.map((r) => <RepoAlerts key={r} repo={r} />)}</ul>
-    </>
-  );
+  if (!repos.length) return <p className="muted">No repos indexed yet. Open a repo's Overview first.</p>;
+  return <ul className="list">{repos.map((r) => <RepoAlerts key={r} repo={r} />)}</ul>;
 }
 
 function SettingsPage() {
@@ -1300,79 +1301,83 @@ function SettingsPage() {
   };
 
   return (
-    <form className="settings" onSubmit={(e) => { e.preventDefault(); save(false); }}>
+    <div className="settings">
       <h1>Settings</h1>
-      <p className="kicker">Models, connections, the Slack bot and overdue alerts.</p>
 
-      <Section title="Chat model">
-        <div className="field">
-          <label htmlFor="chat-provider">Provider</label>
-          <select id="chat-provider" value={form.chat.provider} onChange={(e) => setProvider('chat', e.target.value)}>
-            {['ollama', 'anthropic', 'openai'].map((p) => <option key={p} value={p}>{PROVIDER_NAMES[p]}</option>)}
-          </select>
-        </div>
-        <ModelField id="chat-model" label="Model" value={form.chat.model} options={modelList(form.chat.provider)}
-          onChange={(model) => set({ chat: { ...form.chat, model } })} hint={listHint(form.chat.provider)} />
-      </Section>
+      <form onSubmit={(e) => { e.preventDefault(); save(false); }}>
+        <Setting title="Chat model" desc="Answers questions in Ask.">
+          <div className="field-pair">
+            <div className="field">
+              <label htmlFor="chat-provider">Provider</label>
+              <select id="chat-provider" value={form.chat.provider} onChange={(e) => setProvider('chat', e.target.value)}>
+                {['ollama', 'anthropic', 'openai'].map((p) => <option key={p} value={p}>{PROVIDER_NAMES[p]}</option>)}
+              </select>
+            </div>
+            <ModelField id="chat-model" label="Model" value={form.chat.model} options={modelList(form.chat.provider)}
+              onChange={(model) => set({ chat: { ...form.chat, model } })} hint={listHint(form.chat.provider)} />
+          </div>
+        </Setting>
 
-      <Section title="Embedding model">
-        <div className="field">
-          <label htmlFor="embed-provider">Provider</label>
-          <select id="embed-provider" value={form.embed.provider} onChange={(e) => setProvider('embed', e.target.value)}>
-            {['ollama', 'openai'].map((p) => <option key={p} value={p}>{PROVIDER_NAMES[p]}</option>)}
-          </select>
-        </div>
-        <ModelField id="embed-model" label="Model" value={form.embed.model} options={modelList(form.embed.provider)}
-          onChange={(model) => set({ embed: { ...form.embed, model } })}
-          hint={listHint(form.embed.provider) ?? 'Changing this re-embeds everything the next time you ask a question. Anthropic has no embedding models.'} />
-      </Section>
+        <Setting title="Embedding model" desc="Indexes issues and Slack for search. Changing it re-indexes on the next question.">
+          <div className="field-pair">
+            <div className="field">
+              <label htmlFor="embed-provider">Provider</label>
+              <select id="embed-provider" value={form.embed.provider} onChange={(e) => setProvider('embed', e.target.value)}>
+                {['ollama', 'openai'].map((p) => <option key={p} value={p}>{PROVIDER_NAMES[p]}</option>)}
+              </select>
+            </div>
+            <ModelField id="embed-model" label="Model" value={form.embed.model} options={modelList(form.embed.provider)}
+              onChange={(model) => set({ embed: { ...form.embed, model } })} hint={listHint(form.embed.provider)} />
+          </div>
+        </Setting>
 
-      <Section title="Connections">
-        <div className="field">
-          <label htmlFor="ollama-url">Ollama URL</label>
-          <input id="ollama-url" type="url" value={form.ollamaUrl} onChange={(e) => set({ ollamaUrl: e.target.value })} />
-        </div>
-        <KeyField label="Anthropic API key" id="anthropic-key" state={settings.anthropic.key} value={form.anthropicKey}
-          cleared={form.clear.anthropic} onChange={(v) => set({ anthropicKey: v })}
-          onClear={() => set({ clear: { ...form.clear, anthropic: true } })} />
-        <div className="field">
-          <label htmlFor="openai-url">OpenAI-compatible base URL</label>
-          <input id="openai-url" type="url" value={form.openaiUrl} onChange={(e) => set({ openaiUrl: e.target.value })} />
-          <p className="hint">OpenAI, Groq, OpenRouter, Together, LM Studio, vLLM… anything that speaks the OpenAI API.</p>
-        </div>
-        <KeyField label="OpenAI-compatible API key" id="openai-key" state={settings.openai.key} value={form.openaiKey}
-          cleared={form.clear.openai} onChange={(v) => set({ openaiKey: v })}
-          onClear={() => set({ clear: { ...form.clear, openai: true } })} />
-        <p className="hint">Keys are stored encrypted on this machine and never sent back to the browser.</p>
-      </Section>
+        <Setting title="Connections" desc="Where the models run. Keys are encrypted on this machine and never sent back to the browser.">
+          <div className="field">
+            <label htmlFor="ollama-url">Ollama URL</label>
+            <input id="ollama-url" type="url" value={form.ollamaUrl} onChange={(e) => set({ ollamaUrl: e.target.value })} />
+          </div>
+          <KeyField label="Anthropic API key" id="anthropic-key" state={settings.anthropic.key} value={form.anthropicKey}
+            cleared={form.clear.anthropic} onChange={(v) => set({ anthropicKey: v })}
+            onClear={() => set({ clear: { ...form.clear, anthropic: true } })} />
+          <div className="field-pair">
+            <div className="field">
+              <label htmlFor="openai-url">OpenAI-compatible base URL</label>
+              <input id="openai-url" type="url" value={form.openaiUrl} onChange={(e) => set({ openaiUrl: e.target.value })} />
+            </div>
+            <KeyField label="API key" id="openai-key" state={settings.openai.key} value={form.openaiKey}
+              cleared={form.clear.openai} onChange={(v) => set({ openaiKey: v })}
+              onClear={() => set({ clear: { ...form.clear, openai: true } })} />
+          </div>
+          <p className="hint">Works with OpenAI, Groq, OpenRouter, Together, LM Studio and vLLM.</p>
 
-      <Section title="Slack bot">
+          {cloud.length > 0 && (
+            <p className="alert" role="note">
+              <span className="alert-label">Privacy</span>
+              Questions, and the Slack messages and GitHub text that match them, will be sent to {[...new Set(cloud)].map((p) => PROVIDER_NAMES[p]).join(' and ')}.
+            </p>
+          )}
+          <div className="setting-actions">
+            <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button>
+            <button type="button" className="btn" disabled={saving} onClick={() => save(true)}>Save and test</button>
+          </div>
+          {notice && <p className={notice.ok ? 'muted' : 'error'} role="status">{notice.text}</p>}
+          {test && (
+            <ul className="test-results">
+              <li className={test.chat.ok ? '' : 'error'}><b>Chat</b> {test.chat.ok ? 'works' : 'failed'}: {test.chat.detail}</li>
+              <li className={test.embed.ok ? '' : 'error'}><b>Embeddings</b> {test.embed.ok ? 'work' : 'failed'}: {test.embed.detail}</li>
+            </ul>
+          )}
+        </Setting>
+      </form>
+
+      <Setting title="Slack bot" desc="Who the bot may message about late work. Only confirmed links get messages. Changes save immediately.">
         <BotSettings />
-      </Section>
+      </Setting>
 
-      <Section title="Overdue alerts">
+      <Setting title="Overdue alerts" desc="When an issue passes its milestone date, the bot asks its assignee why, reminds them once after 3 days, and records the reply. Checks run every 15 minutes.">
         <AlertSettings />
-      </Section>
-
-      {cloud.length > 0 && (
-        <p className="alert" role="note">
-          <span className="alert-label">Privacy</span>
-          Questions, and the Slack messages and GitHub text that match them, will be sent to {[...new Set(cloud)].map((p) => PROVIDER_NAMES[p]).join(' and ')}.
-        </p>
-      )}
-
-      <div className="actions">
-        <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button>
-        <button type="button" className="btn" disabled={saving} onClick={() => save(true)}>Save and test connection</button>
-      </div>
-      {notice && <p className={notice.ok ? 'muted' : 'error'} role="status">{notice.text}</p>}
-      {test && (
-        <Rows rows={[
-          ['chat', `${test.chat.ok ? '✓' : '✗'} ${test.chat.detail}`],
-          ['embeddings', `${test.embed.ok ? '✓' : '✗'} ${test.embed.detail}`],
-        ]} />
-      )}
-    </form>
+      </Setting>
+    </div>
   );
 }
 
