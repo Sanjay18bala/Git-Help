@@ -55,6 +55,12 @@ export function db() {
       github_login TEXT NOT NULL, slack_user_id TEXT NOT NULL, text TEXT NOT NULL, ts TEXT NOT NULL,
       permalink TEXT, created_at TEXT NOT NULL, UNIQUE (alert_id, ts));
 
+    -- When the assignee expects to finish a late issue, read from their replies (alerts.js recordReply).
+    CREATE TABLE IF NOT EXISTS etas (
+      id INTEGER PRIMARY KEY, alert_id INTEGER NOT NULL, repo TEXT NOT NULL, number INTEGER NOT NULL,
+      github_login TEXT NOT NULL, due_date TEXT NOT NULL, text TEXT NOT NULL, ts TEXT NOT NULL, created_at TEXT NOT NULL,
+      UNIQUE (alert_id, ts));
+
     -- Digests the bot posted to a repo's linked channels (alerts.js). period: the weekday or ISO week a scheduled
     -- digest covers (NULL for "Post now"); a row with channel_id '' marks a scheduled digest skipped as empty.
     CREATE TABLE IF NOT EXISTS digests (

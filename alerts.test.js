@@ -75,6 +75,35 @@ assert.match(d.prepare("SELECT text FROM chunks WHERE id LIKE 'followup:%'").get
 assert.deepEqual(realPlan(today, sentAt + 5 * 86_400_000).send, []);
 assert.equal(await alerts.recordReply({ channel: 'D-OTHER', user: 'U9', text: 'hi', ts: '1790000200.0001' }), null);
 
+// ---------- expected finish date ----------
+const { parseDate } = await import('./dates.js');
+const realToday = rag.localDate();
+// The reason came without a date, so the bot asked for one.
+assert.match(posted.at(-1).text, /When do you expect to finish it\?/);
+// A reply with no date isn't stored as a new reason; the bot asks again.
+await alerts.recordReply({ channel: 'D-UPRIYA', user: 'UPRIYA', text: 'not sure yet', ts: '1790000110.000200', thread_ts: alertTs });
+assert.match(posted.at(-1).text, /couldn't find a date/);
+assert.deepEqual(alerts.followupsFor('o/r', 14).map((f) => f.text), ['Waiting on review of the quoting fix']);
+// A date answer is stored and confirmed.
+await alerts.recordReply({ channel: 'D-UPRIYA', user: 'UPRIYA', text: 'by end of week', ts: '1790000120.000200', thread_ts: alertTs });
+const eta = parseDate('end of week', realToday);
+assert.match(posted.at(-1).text, /^Got it: #14 by \w{3}, \w{3} \d+\./);
+assert.equal(rag.latestEta('o/r', 14).due_date, eta);
+// It shows up for the chat, the Overview data and the digest.
+assert.match(rag.repoOverview('o/r').text, new RegExp(`priya expects to finish by ${eta}`));
+assert.equal(rag.attention('o/r').overdue.find((i) => i.number === 14).eta.date, eta);
+assert.match(alerts.digestText('o/r', rag.attention('o/r')), /priya: “Waiting on review of the quoting fix” · (expects|missed) \w{3} \d+/);
+// While the date is ahead, no reminders; once it has passed, one nudge per missed date.
+assert.deepEqual(realPlan(realToday, Date.now() + 10 * 86_400_000).send.filter((a) => a.number === 14), []);
+const afterEta = '2026-12-31';
+const nudge = realPlan(afterEta).send.filter((a) => a.number === 14);
+assert.deepEqual(nudge.map((a) => [a.kind, a.due_on]), [['eta', eta]]);
+assert.match(alerts.alertText(nudge[0]), /was expected by \w{3}, \w{3} \d+ and is still open\. Any update\?/);
+// Log the nudge as sent (sendAlerts plans with the real date, which isn't past the expected date yet).
+d.prepare(`INSERT INTO alerts (repo, number, github_login, slack_user_id, due_on, kind, sent_at, channel_id, message_ts)
+  VALUES ('o/r', 14, 'priya', 'UPRIYA', ?, 'eta', ?, 'D-UPRIYA', '1790000300.0001')`).run(eta, new Date().toISOString());
+assert.deepEqual(realPlan(afterEta).send.filter((a) => a.number === 14), [], 'one nudge per missed date');
+
 // The stored background token is sealed, and removed on sign-out.
 alerts.rememberGithubToken('gho_secret');
 assert(!d.prepare("SELECT value FROM settings WHERE key = 'github'").get().value.includes('gho_secret'));
@@ -90,6 +119,7 @@ assert.equal(alerts.digestPeriod('weekly', new Date(2026, 9, 8, 15)), 'week of 2
 
 // The message: what's late and why (or why not), then what's next.
 const att = rag.attention('o/r', 14, today);
+for (const i of att.overdue) i.eta = null; // expected dates in the digest are tested above
 assert.equal(alerts.digestText('o/r', att, { schedule: 'weekly' }), [
   '*r* · 3 items past due in v1',
   '• <https://github.com/o/r/issues/6|#6 Grind size> · 2 days late · no owner',

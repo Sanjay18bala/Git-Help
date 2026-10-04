@@ -159,7 +159,12 @@ GitHelp needs four things from you before it can do its job:
    messaged before anything is sent. While GitHelp is running it checks every 15 minutes, messages the assignee of
    each late issue once, and reminds them once after 3 days without a reply.
 
-When someone replies to the bot, their reason appears on the repository's **Overview** and on the issue. Press **⌘J**
+When someone replies to the bot, it also asks when they expect to finish ("Friday", "Oct 9" and "in 3 days" all work).
+Their reason and date appear on the repository's **Overview**, on the **Attention** page and in the digest; if the date
+passes with the issue still open, the bot asks once for an update.
+
+To have the bot post a summary of what's late to the linked channel, pick **Daily** or **Weekly** in **Settings → Slack
+digest**. Invite the bot to that channel first: type `/invite @GitHelp` in it. Press **⌘J**
 (Ctrl+J on Windows and Linux) or click **Ask a question** to ask about the repository; answers cite their sources.
 
 ## Using a cloud model instead of Ollama

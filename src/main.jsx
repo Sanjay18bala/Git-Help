@@ -1511,6 +1511,7 @@ const CODE_TABS = ['commits', 'branches', 'releases', 'contributors'];
 const askChat = (question) => window.dispatchEvent(new CustomEvent('git-help:ask', { detail: question }));
 
 const dayMonth = (iso) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+const dayWeek = (ymd) => new Date(`${ymd}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 
 function Reason({ r }) {
   return (
@@ -1605,7 +1606,14 @@ function LateLedger({ repo, items, title, note }) {
             </p>
           </div>
           <div className="ledger-why">
-            {i.reason ? <Reason r={i.reason} /> : (
+            {i.reason && <Reason r={i.reason} />}
+            {i.eta && (
+              <p className={`eta${i.eta.days_past > 0 ? ' late-text' : ''}`}>
+                {i.eta.days_past > 0 ? `Expected ${dayWeek(i.eta.date)} · ${plural(i.eta.days_past, 'day')} past that`
+                  : i.eta.days_past === 0 ? 'Expects to finish today' : `Expects to finish ${dayWeek(i.eta.date)}`}
+              </p>
+            )}
+            {!i.reason && (
               <>
                 <p className="muted">
                   {!i.assignees.length ? 'No owner, so nobody has been asked.'

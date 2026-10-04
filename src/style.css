@@ -643,3 +643,5 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; backg
 @media (max-width: 560px) { .digest-row { grid-template-columns: minmax(0, 1fr); } }
 .ledger-head h2 a { color: inherit; }
 .page-body > h1 + .lead-line { margin-top: 12px; }
+.ledger-why .eta { margin: 4px 0 0; font-size: 13px; }
+.ledger-why .eta:not(.late-text) { color: var(--fg); }

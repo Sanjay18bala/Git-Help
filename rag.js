@@ -21,6 +21,16 @@ export const localDate = (d = new Date()) =>
 export const localDayOf = (iso) => localDate(new Date(iso)); // an event time, as the local date
 export const daysLate = (due, today = localDate()) => Math.round((Date.parse(today) - Date.parse(due)) / 86_400_000);
 
+// The latest date the assignee said they expect to finish (alerts.js reads it from their Slack replies), or null.
+export const latestEta = (repo, number) => db().prepare(
+  'SELECT due_date, github_login, created_at FROM etas WHERE repo = ? AND number = ? ORDER BY created_at DESC, id DESC LIMIT 1').get(repo, number) ?? null;
+// The expected date as a phrase for the chat's sources: "expects to finish by 2026-10-09 (in 5 days)".
+const etaPhrase = (eta, today) => {
+  if (!eta) return '';
+  const n = daysLate(eta.due_date, today);
+  return `; ${eta.github_login} expects to finish by ${eta.due_date} (${n > 0 ? `${n} day${n === 1 ? '' : 's'} past that date` : n === 0 ? 'today' : `in ${-n} day${n === -1 ? '' : 's'}`})`;
+};
+
 const sha = (s) => createHash('sha1').update(s).digest('hex');
 
 // Long text → pieces of at most `max` chars on line boundaries, carrying one line of overlap when it fits.
@@ -400,7 +410,8 @@ export function repoOverview(repo, perGroup = 25) {
     const r = reason.get(repo, i.number);
     return `${due(i)}, ${plural(daysLate(i.due_on, today), 'day')} late`
       + (r ? `; reason given by ${r.github_login} on ${localDayOf(r.created_at)}: "${r.text.replace(/\s+/g, ' ').slice(0, 300)}"`
-        : i.assignees ? '; no reason given yet' : '; nobody assigned, so nobody has been asked');
+        : i.assignees ? '; no reason given yet' : '; nobody assigned, so nobody has been asked')
+      + etaPhrase(latestEta(repo, i.number), today);
   };
   const nums = (rows) => (rows.length ? ` (${rows.map((i) => `#${i.number}`).join(', ')})` : '');
   const explained = overdue.filter((i) => reason.get(repo, i.number));
@@ -458,6 +469,7 @@ export function attention(repo, horizonDays = 14, today = localDate()) {
     days_late: i.due_on ? daysLate(i.due_on, today) : null,
     reason: reasonOf.get(repo, i.number) ?? null,
     alerted_at: alertOf.get(repo, i.number)?.sent_at ?? null,
+    eta: (({ due_date, created_at } = {}) => (due_date ? { date: due_date, created_at, days_past: daysLate(due_date, today) } : null))(latestEta(repo, i.number) ?? {}),
   });
   const open = items.filter((i) => i.state === 'open');
   const dated = open.filter((i) => i.due_on);
@@ -509,6 +521,7 @@ export function issueFacts(question, repos) {
           late === null ? '- not overdue' : late > 0 ? `- overdue by ${late} day${late === 1 ? '' : 's'}` : `- not overdue yet (due in ${-late} days)`,
           r ? `- reason given to the Git-Help bot by ${r.github_login} on ${localDayOf(r.created_at)}: "${r.text}"`
             : `- reason: none given yet for #${n}${asked ? ` (the bot asked on ${localDayOf(asked.sent_at)}; no reply)` : ''}. Do not use reasons given for other issues.`,
+          (({ eta = latestEta(repo, n) } = {}) => (eta ? `- expected finish date: ${etaPhrase(eta, today).slice(2)}` : `- expected finish date: none given yet`))(),
         ].join('\n'),
       });
     }

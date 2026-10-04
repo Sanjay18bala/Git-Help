@@ -3,7 +3,8 @@
 import { db } from './db.js';
 import { bot, slackUserFor } from './bot.js';
 import { seal, unseal } from './secrets.js';
-import { attention, daysLate, indexGithub, indexFollowups, localDate } from './rag.js';
+import { attention, daysLate, indexGithub, indexFollowups, latestEta, localDate } from './rag.js';
+import { dayLong, parseDate } from './dates.js';
 import { links as slackLinks } from './slack.js';
 
 const REMIND_AFTER_DAYS = 3; // one reminder if there's been no reply; then nothing until the due date changes
@@ -55,6 +56,14 @@ export function planAlerts(today = localDate(), now = Date.now()) {
           cannot.push({ ...base, login, reason: 'no confirmed Slack link (Settings → slack bot)' });
           continue;
         }
+        const eta = latestEta(repo, i.number);
+        if (eta && eta.due_date >= today) continue; // they named a date that hasn't come yet: wait for it
+        if (eta) { // that date passed and the issue is still open: ask once per missed date
+          const nudged = d.prepare("SELECT 1 FROM alerts WHERE repo = ? AND number = ? AND github_login = ? AND kind = 'eta' AND due_on = ?")
+            .get(repo, i.number, login, eta.due_date);
+          if (!nudged) send.push({ ...base, login, slack_user_id: slackUser, kind: 'eta', due_on: eta.due_date, eta: eta.due_date });
+          continue;
+        }
         const last = lastAlert.get(repo, i.number, login, i.due_on);
         if (!last) send.push({ ...base, login, slack_user_id: slackUser, kind: 'first' });
         else if (last.kind === 'first' && !replied.get(repo, i.number, login)
@@ -72,6 +81,9 @@ const dayLabel = (ymd) => new Date(`${ymd}T12:00:00`).toLocaleDateString('en-US'
 export function alertText(a) {
   const link = `<${a.url}|#${a.number} ${a.title.replace(/[<>|]/g, '')}>`;
   const late = `${a.days_late} day${a.days_late === 1 ? '' : 's'} ago`;
+  if (a.kind === 'eta') {
+    return `${link} in ${a.repo} was expected by ${dayLong(a.eta)} and is still open. Any update? When do you now expect to finish it?`;
+  }
   return a.kind === 'reminder'
     ? `Quick reminder: ${link} in ${a.repo} is still open (due ${dayLabel(a.due_on)}, ${late}). What's holding it up? `
       + 'Reply in this thread and I\'ll pass it on when someone asks.'
@@ -112,13 +124,40 @@ export async function recordReply(event) {
   try {
     permalink = (await bot('chat.getPermalink', { channel: event.channel, message_ts: event.ts })).permalink;
   } catch { /* the reply is still worth keeping without a link */ }
-  d.prepare(`INSERT OR IGNORE INTO followups (alert_id, repo, number, github_login, slack_user_id, text, ts, permalink, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(alert.id, alert.repo, alert.number, alert.github_login, event.user, event.text ?? '', event.ts, permalink, new Date().toISOString());
-  await bot('chat.postMessage', {
-    channel: event.channel, thread_ts: event.thread_ts ?? event.ts,
-    text: `Thanks, noted for #${alert.number}. I'll share it when someone asks why it's late.`,
-  });
+  const text = event.text ?? '';
+  const now = new Date().toISOString();
+  const today = localDate();
+  const n = `#${alert.number}`;
+  const saveReason = () => d.prepare(`INSERT OR IGNORE INTO followups (alert_id, repo, number, github_login, slack_user_id, text, ts, permalink, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(alert.id, alert.repo, alert.number, alert.github_login, event.user, text, event.ts, permalink, now);
+  const saveEta = (date) => d.prepare(`INSERT OR IGNORE INTO etas (alert_id, repo, number, github_login, due_date, text, ts, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(alert.id, alert.repo, alert.number, alert.github_login, date, text, event.ts, now);
+  // The first reply to an alert is the reason; then the bot asks for a date until it gets one. A reply that names
+  // a date (even inside the reason, "sick, done by Friday") sets the expected date.
+  const date = parseDate(text, today);
+  const hasReason = d.prepare('SELECT 1 FROM followups WHERE alert_id = ?').get(alert.id);
+  const hasEta = d.prepare('SELECT 1 FROM etas WHERE alert_id = ?').get(alert.id);
+  let reply;
+  if (!hasReason) {
+    saveReason();
+    if (date && date >= today) {
+      saveEta(date);
+      reply = `Thanks, noted for ${n}, expected by ${dayLong(date)}. I'll share it when someone asks why it's late.`;
+    } else {
+      reply = `Thanks, noted for ${n}. When do you expect to finish it? A day or a date is fine, like Friday or Oct 9.`;
+    }
+  } else if (date && date >= today) {
+    saveEta(date);
+    reply = `Got it: ${n} by ${dayLong(date)}. I'll check in if it's still open after that.`;
+  } else if (date) {
+    reply = `${dayLong(date)} has already passed. When do you expect to finish ${n}?`;
+  } else if (!hasEta) {
+    reply = `I couldn't find a date in that. When do you expect to finish ${n}? For example Friday, Oct 9, or in 3 days.`;
+  } else {
+    saveReason();
+    reply = `Thanks, noted for ${n}.`;
+  }
+  await bot('chat.postMessage', { channel: event.channel, thread_ts: event.thread_ts ?? event.ts, text: reply });
   await indexFollowups(alert.repo).catch(() => {}); // searchable now; re-indexing also picks it up later
   return alert;
 }
@@ -212,7 +251,8 @@ export function digestText(repo, att, { schedule = 'weekly' } = {}) {
     : `*${esc(name)}* · nothing is past due`);
   for (const i of late.slice(0, 10)) {
     const who = i.assignees.join(', ');
-    const why = i.reason ? `${esc(i.reason.github_login)}: “${esc(clip(i.reason.text.replace(/\s+/g, ' '), 140))}”`
+    const expect = !i.eta ? '' : i.eta.days_past > 0 ? ` · missed ${eventDay(`${i.eta.date}T12:00:00`)}` : ` · expects ${eventDay(`${i.eta.date}T12:00:00`)}`;
+    const why = i.reason ? `${esc(i.reason.github_login)}: “${esc(clip(i.reason.text.replace(/\s+/g, ' '), 140))}”${expect}`
       : !who ? 'no owner'
         : i.alerted_at ? `${esc(who)} · asked ${eventDay(i.alerted_at)}, no reply` : `${esc(who)} · not asked yet`;
     lines.push(`• <${i.url}|#${i.number} ${esc(i.title)}> · ${plural(i.days_late, 'day')} late · ${why}`);
