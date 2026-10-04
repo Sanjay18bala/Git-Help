@@ -35,7 +35,7 @@ const date = (s) => (s ? ago(s) : '');
 const Time = ({ value }) => (value ? <time dateTime={value} title={new Date(value).toLocaleString()}>{ago(value)}</time> : null);
 
 // Browser tab title per page, like GitHub's "#14 Title · owner/repo".
-const useTitle = (title) => useEffect(() => { document.title = title ? `${title} · Git-Help` : 'Git-Help'; }, [title]);
+const useTitle = (title) => useEffect(() => { document.title = title ? `${title} · GitHelp` : 'GitHelp'; }, [title]);
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 // Milestone due dates are calendar dates (GitHub stores them as midnight UTC), so compare date parts: as a
@@ -304,7 +304,7 @@ const GitHubMark = () => (
   </svg>
 );
 
-const Brand = ({ to }) => <Link to={to} className="brand"><Logo />git-help</Link>;
+const Brand = ({ to }) => <Link to={to} className="brand"><Logo />GitHelp</Link>;
 
 const HashIcon = () => (
   <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5"
@@ -752,7 +752,7 @@ function ChatPanel({ repo, open, onClose }) {
           ) : (
             <div key={i} className="msg msg-assistant">
               <span className="msg-author">
-                git-help{m.pending && !m.text && <span className="typing"> · {m.status ?? 'searching…'}</span>}
+                GitHelp{m.pending && !m.text && <span className="typing"> · {m.status ?? 'searching…'}</span>}
               </span>
               {m.text && <AnswerText text={m.text} sources={m.sources} />}
               {m.stopped && <p className="muted">stopped</p>}
@@ -790,22 +790,27 @@ const Rows = ({ rows }) => (
   </dl>
 );
 
+// Light, Dark A (graphite) and Dark B (slate). index.html applies the saved choice before first paint.
+const THEMES = [['light', 'Light'], ['graphite', 'Graphite'], ['slate', 'Slate']];
 function ThemeToggle() {
-  const system = () => (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  const system = () => (matchMedia('(prefers-color-scheme: dark)').matches ? 'graphite' : 'light');
   const [theme, setTheme] = useState(() => document.documentElement.dataset.theme ?? system());
-  const next = theme === 'dark' ? 'light' : 'dark';
-  const flip = () => {
-    document.documentElement.dataset.theme = next;
-    try { localStorage.setItem('theme', next); } catch {}
-    setTheme(next);
+  const pick = (t) => {
+    document.documentElement.dataset.theme = t;
+    try { localStorage.setItem('theme', t); } catch {}
+    setTheme(t);
   };
-  return <button className="btn btn-ghost btn-sm" onClick={flip} aria-label={`Switch to ${next} theme`}>{next}</button>;
+  return (
+    <div className="theme-switch" role="group" aria-label="Theme">
+      {THEMES.map(([t, label]) => <button key={t} type="button" aria-pressed={theme === t} onClick={() => pick(t)}>{label}</button>)}
+    </div>
+  );
 }
 
 const Footer = () => (
   <footer className="container">
     <div className="footer">
-      <span>git-help · read-only · MIT</span>
+      <span>GitHelp · read-only · MIT</span>
       <ThemeToggle />
     </div>
   </footer>
@@ -840,7 +845,7 @@ function Home() {
           <h1>Your GitHub, in one quiet place.</h1>
           <p className="kicker">repos · pull requests · issues · branches</p>
           <p className="lead">
-            Git-Help pulls everything you need while building a project out of your GitHub account into one read-only
+            GitHelp pulls everything you need while building a project out of your GitHub account into one read-only
             dashboard. Sign in once and browse it all, without tab-hopping across github.com.
           </p>
 
@@ -869,7 +874,7 @@ function Home() {
 
         <Section title="how sign-in works">
           <Rows rows={[
-            ['01 · authorize', 'You approve access on github.com. Git-Help never asks for or sees your password.'],
+            ['01 · authorize', 'You approve access on github.com. GitHelp never asks for or sees your password.'],
             ['02 · encrypt', 'Your access token is encrypted into an HttpOnly cookie on this machine.'],
             ['03 · read', 'Requests only read data, and go straight to api.github.com. Revoke access any time.'],
           ]} />

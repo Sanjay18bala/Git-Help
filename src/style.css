@@ -5,56 +5,52 @@
   --text-xs: 11px; --text-sm: 12px; --text-md: 13px; --text-base: 15px; --text-lg: 18px; --text-xl: 24px;
   --radius-sm: 6px; --radius-full: 999px;
 }
+/* Three themes: light (default), graphite ("Dark A") and slate ("Dark B"). A saved choice sets data-theme on <html>;
+   with none, the OS dark preference gets graphite. Color rule: --danger means LATE and is the only signal color in
+   the UI; open/merged/waiting/has-a-reason stay neutral (icon shapes and type carry them). --warn is reserved for
+   "due within 3 days". Diff and syntax colors are the one exception, because code review conventions expect them.
+   Every text color passes 4.5:1 on --bg and --panel in its theme. */
 :root {
   --bg: #ffffff;
-  --fg: #171717;
+  --panel: #f7f7f7;    /* sidebar, Ask panel */
+  --fg: #161616;
   --muted: #666666;
-  --subtle: #f5f5f5;
-  --border: #e5e5e5;
-  --danger: #cf222e;
-  /* status colors: text, dots and 1px borders only, never fills */
-  --ok: #1a7f37;
-  --warn: #8a5d00;
-  --merged: #8250df;
-  --control: #8a8a8a; /* input borders: 3:1 against the page */
-  /* syntax + diff (GitHub's Primer colors); the diff rows are the one place status colors become fills */
+  --subtle: #f0f0f0;   /* hover and selected fills */
+  --border: #e0e0e0;
+  --control: #8d8d8d;  /* input borders: 3:1 against the page */
+  --danger: #c0362c;   /* late */
+  --warn: #8a5a00;     /* due within 3 days */
+  --ok: var(--fg);
+  --merged: var(--muted);
+  --add: #1a7f37;      /* diff only */
   --syn-keyword: #cf222e; --syn-string: #0a3069; --syn-comment: #6e7781; --syn-fn: #8250df; --syn-const: #0550ae; --syn-var: #953800;
-  --diff-add: rgb(26 127 55 / .12); --diff-del: rgb(207 34 46 / .10); --diff-hunk: rgb(130 80 223 / .08);
-  --radius: 0.5rem;
-  --sans: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --diff-add: rgb(26 127 55 / .10); --diff-del: rgb(192 54 44 / .09); --diff-hunk: var(--subtle);
+  --radius: 3px;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #0a0a0a;
-    --fg: #ededed;
-    --muted: #a1a1a1;
-    --subtle: #171717;
-    --border: #262626;
-    --danger: #e5484d;
-    --ok: #3fb950;
-    --warn: #d29922;
-    --merged: #a371f7;
-    --control: #666666;
-    --syn-keyword: #ff7b72; --syn-string: #a5d6ff; --syn-comment: #8b949e; --syn-fn: #d2a8ff; --syn-const: #79c0ff; --syn-var: #ffa657;
-    --diff-add: rgb(63 185 80 / .15); --diff-del: rgb(229 72 77 / .15); --diff-hunk: rgb(163 113 247 / .12);
+  :root:not([data-theme]) {
+    --bg: #262626; --panel: #2e2e2e; --fg: #f4f4f4; --muted: #ababab; --subtle: #313131; --border: #3d3d3d; --control: #8d8d8d;
+    --danger: #ff6b57; --warn: #e0a33a; --add: #56d364;
+    --syn-keyword: #ff7b72; --syn-string: #a5d6ff; --syn-comment: #9198a1; --syn-fn: #d2a8ff; --syn-const: #79c0ff; --syn-var: #ffa657;
+    --diff-add: rgb(86 211 100 / .12); --diff-del: rgb(255 107 87 / .12);
     color-scheme: dark;
   }
 }
-:root[data-theme="dark"] {
-  --bg: #0a0a0a;
-  --fg: #ededed;
-  --muted: #a1a1a1;
-  --subtle: #171717;
-  --border: #262626;
-  --danger: #e5484d;
-  --ok: #3fb950;
-  --warn: #d29922;
-  --merged: #a371f7;
-  --control: #666666;
-  --syn-keyword: #ff7b72; --syn-string: #a5d6ff; --syn-comment: #8b949e; --syn-fn: #d2a8ff; --syn-const: #79c0ff; --syn-var: #ffa657;
-  --diff-add: rgb(63 185 80 / .15); --diff-del: rgb(229 72 77 / .15); --diff-hunk: rgb(163 113 247 / .12);
+:root[data-theme="graphite"] {
+  --bg: #262626; --panel: #2e2e2e; --fg: #f4f4f4; --muted: #ababab; --subtle: #313131; --border: #3d3d3d; --control: #8d8d8d;
+  --danger: #ff6b57; --warn: #e0a33a; --add: #56d364;
+  --syn-keyword: #ff7b72; --syn-string: #a5d6ff; --syn-comment: #9198a1; --syn-fn: #d2a8ff; --syn-const: #79c0ff; --syn-var: #ffa657;
+  --diff-add: rgb(86 211 100 / .12); --diff-del: rgb(255 107 87 / .12);
+  color-scheme: dark;
+}
+:root[data-theme="slate"] {
+  --bg: #1b2230; --panel: #212a3a; --fg: #e8ecf2; --muted: #9da8b8; --subtle: #283245; --border: #2e3849; --control: #6b778a;
+  --danger: #ff6b57; --warn: #e0a33a; --add: #56d364;
+  --syn-keyword: #ff7b72; --syn-string: #a5d6ff; --syn-comment: #96a1b0; --syn-fn: #d2a8ff; --syn-const: #79c0ff; --syn-var: #ffa657;
+  --diff-add: rgb(86 211 100 / .12); --diff-del: rgb(255 107 87 / .12);
   color-scheme: dark;
 }
 
@@ -64,7 +60,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font: 15px/1.65 var(--sans);
+  font: 14px/1.55 var(--sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -473,7 +469,7 @@ a.tile:hover { border-color: var(--fg); }
 .detail-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-3); margin: var(--s-2) 0 var(--s-3); color: var(--muted); font-size: var(--text-md); }
 .detail-meta .badge { margin: 0; }
 .detail-meta b { color: var(--fg); font-weight: 500; }
-.add { color: var(--ok); } .del { color: var(--danger); }
+.add { color: var(--add); } .del { color: var(--danger); }
 .detail { display: grid; grid-template-columns: minmax(0, 1fr) 200px; gap: var(--s-8); margin-top: var(--s-6); }
 .detail-side { font-size: var(--text-md); }
 .detail-side section { padding-bottom: var(--s-4); margin-bottom: var(--s-4); border-bottom: 1px solid var(--border); display: grid; gap: var(--s-2); }
@@ -542,7 +538,7 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; backg
 .diff .ln { padding: 0 var(--s-2); color: var(--muted); text-align: right; user-select: none; opacity: .8; }
 .diff .code { padding-right: var(--s-3); white-space: pre-wrap; word-break: break-word; }
 .diff .sign { display: inline-block; width: 20px; padding-left: var(--s-2); color: var(--muted); user-select: none; }
-.diff-add { background: var(--diff-add); } .diff-add .sign { color: var(--ok); }
+.diff-add { background: var(--diff-add); } .diff-add .sign { color: var(--add); }
 .diff-del { background: var(--diff-del); } .diff-del .sign { color: var(--danger); }
 .diff-hunk td { padding: var(--s-1) var(--s-3); background: var(--diff-hunk); color: var(--muted); }
 .diff-comment td { padding: var(--s-2) var(--s-3); background: var(--bg); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); font: var(--text-md)/1.6 var(--sans); }
@@ -555,3 +551,9 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; backg
 .hljs-title, .hljs-title.function_, .hljs-section, .pl-en { color: var(--syn-fn); }
 .hljs-number, .hljs-literal, .hljs-attr, .hljs-attribute, .hljs-symbol, .hljs-name, .pl-c1, .pl-ent { color: var(--syn-const); }
 .hljs-variable, .hljs-params, .hljs-property, .hljs-template-variable, .pl-v, .pl-smi { color: var(--syn-var); }
+
+/* ---------- theme switch ---------- */
+.theme-switch { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.theme-switch button { padding: 3px 10px; border: 0; background: none; color: var(--muted); font: 12px var(--sans); }
+.theme-switch button + button { border-left: 1px solid var(--border); }
+.theme-switch button[aria-pressed="true"] { background: var(--subtle); color: var(--fg); }
