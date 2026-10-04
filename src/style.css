@@ -67,21 +67,9 @@ body {
 ::selection { background: var(--fg); color: var(--bg); }
 
 /* ---------- layout ---------- */
-.page { min-height: 100vh; display: flex; flex-direction: column; }
-.page > main { flex: 1; }
-.container { width: 100%; max-width: 760px; margin: 0 auto; padding: 0 24px; }
-@media (max-width: 480px) { .container { padding: 0 16px; } }
 
-.topbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-top: 40px; padding-bottom: 48px; }
 .brand { display: inline-flex; align-items: center; gap: 10px; font: 600 15px var(--sans); color: var(--fg); text-decoration: none; }
-.nav { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px 20px; font: 14px var(--sans); color: var(--muted); }
-.nav a { color: var(--muted); text-decoration: none; transition: color .15s; }
-.nav a:hover, .nav a[aria-current="page"] { color: var(--fg); }
-.nav a[aria-current="page"] { text-decoration: underline; text-underline-offset: 8px; text-decoration-thickness: 1px; }
-.me { display: inline-flex; align-items: center; gap: 8px; color: var(--fg); }
-.me img { border-radius: 50%; }
 
-.footer { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin: 96px 0 40px; padding-top: 24px; border-top: 1px solid var(--border); font: 12px var(--sans); color: var(--muted); }
 
 /* ---------- type ---------- */
 h1 { margin: 0; font-size: 22px; font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
@@ -108,11 +96,7 @@ code { font: 0.875em var(--mono); }
 .rows dd { margin: 0; color: var(--fg); }
 @media (max-width: 600px) { .rows > div { grid-template-columns: 1fr; gap: 2px; } }
 
-/* ---------- login ---------- */
-.hero h1 { max-width: 20ch; font-size: clamp(28px, 4.5vw, 40px); font-weight: 500; line-height: 1.15; letter-spacing: -0.02em; }
-.hero .kicker { margin-top: 8px; }
 .lead { margin: 20px 0 0; max-width: 60ch; font-size: 17px; line-height: 1.6; color: var(--fg); }
-.cta { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 20px; margin-top: 40px; }
 .hint { font: 13px var(--sans); color: var(--muted); }
 .alert {
   display: flex; flex-direction: column; gap: 2px;
@@ -406,10 +390,6 @@ input::placeholder { color: var(--muted); }
 .btn-sm { height: 28px; padding: 0 10px; font: 12px var(--sans); border-radius: var(--radius); }
 .btn-lg { height: 44px; padding: 0 var(--s-5); font-size: var(--text-base); }
 .ask-btn { margin-top: var(--s-2); }
-.page main > .btn { margin-top: var(--s-4); }
-/* nav buttons read like the nav links next to them; the chat's close button is only for the mobile overlay */
-.nav .btn-ghost { height: auto; padding: 0; font: var(--text-base) var(--mono); background: none; }
-.nav .btn-ghost:hover:not(:disabled) { background: none; }
 
 /* ---------- rows: state icon · content · comments & avatars (GitHub-style scanning) ---------- */
 .list li.row { display: grid; grid-template-columns: 16px 1fr auto; gap: var(--s-3); align-items: start;
@@ -584,3 +564,11 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; backg
 .list .reason { margin-top: 8px; }
 /* lateness reads as text, the same as on the Overview: no box around it */
 .badge.late, .badge.soon { border-color: transparent; padding: 0; }
+
+/* ---------- sign-in ---------- */
+.signin { min-height: 100vh; max-width: 520px; margin: 0 auto; padding: 0 24px; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 16px; }
+.signin .brand { margin-bottom: 24px; }
+.signin h1 { font-size: clamp(28px, 5vw, 36px); font-weight: 500; line-height: 1.2; letter-spacing: -0.02em; }
+.signin .lead { margin: 0 0 8px; font-size: 16px; color: var(--muted); }
+.signin .alert { margin: 0; }
+.signin .hint { margin: 0; }

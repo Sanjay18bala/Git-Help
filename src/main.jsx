@@ -807,14 +807,6 @@ function ThemeToggle() {
   );
 }
 
-const Footer = () => (
-  <footer className="container">
-    <div className="footer">
-      <span>GitHelp · read-only · MIT</span>
-      <ThemeToggle />
-    </div>
-  </footer>
-);
 
 const SIGN_IN_ERRORS = {
   access_denied: 'You cancelled the request on GitHub. Nothing was shared.',
@@ -832,55 +824,19 @@ function Home() {
     fetch('/api/gh/user').then((r) => r.ok && nav('/repos')).catch(() => {});
   }, [nav]);
   return (
-    <div className="page">
-      <header className="topbar container">
-        <Brand to="/" />
-        <nav className="nav">
-          <Ext href="https://github.com/settings/applications">Manage GitHub access ↗</Ext>
-        </nav>
-      </header>
-
-      <main className="container">
-        <section className="hero">
-          <h1>See what's late in your repos, and why.</h1>
-          <p className="lead">
-            GitHelp is a read-only dashboard for your GitHub repositories. Link a repo to its Slack channels and it asks
-            owners why late work is late, keeps their answers on the issue, and answers your questions with sources.
-          </p>
-
-          {error && (
-            <div className="alert" role="alert">
-              <span className="alert-label">Sign-in failed</span>
-              {SIGN_IN_ERRORS[error] ?? error}
-            </div>
-          )}
-
-          <div className="cta">
-            <a className="btn btn-primary btn-lg" href="/auth/login"><GitHubMark />Continue with GitHub</a>
-            <span className="hint">Read-only. Your password never reaches this app.</span>
-          </div>
-        </section>
-
-        <Section title="What you get">
-          <Rows rows={[
-            ['Deadlines', 'Every repo’s overdue and upcoming work, by milestone, with how late each item is.'],
-            ['Reasons', 'A Slack bot asks the owner of a late issue what’s holding it up and keeps the reply on the issue.'],
-            ['Ask', 'Questions about a repo answered from its issues, pull requests and Slack, with links to every source.'],
-            ['Everything else', 'Pull requests with diffs and reviews, issues, commits, Actions runs, releases, branches.'],
-          ]} />
-        </Section>
-
-        <Section title="How sign-in works">
-          <Rows rows={[
-            ['1. Authorize', 'You approve access on github.com. GitHelp never asks for or sees your password.'],
-            ['2. Encrypt', 'Your access token is encrypted into an HttpOnly cookie on this machine.'],
-            ['3. Read', 'Requests only read data, and go straight to api.github.com. Revoke access any time.'],
-          ]} />
-        </Section>
-      </main>
-
-      <Footer />
-    </div>
+    <main className="signin">
+      <Brand to="/" />
+      <h1>See what's late in your repos, and why.</h1>
+      <p className="lead">GitHelp tracks your GitHub deadlines and asks owners why late work is late.</p>
+      {error && (
+        <div className="alert" role="alert">
+          <span className="alert-label">Sign-in failed</span>
+          {SIGN_IN_ERRORS[error] ?? error}
+        </div>
+      )}
+      <a className="btn btn-primary btn-lg" href="/auth/login"><GitHubMark />Continue with GitHub</a>
+      <p className="hint">Read-only access. Your password never reaches GitHelp.</p>
+    </main>
   );
 }
 
