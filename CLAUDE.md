@@ -13,7 +13,7 @@ node eval/rag-eval.js  # RAG answer key against the real dev server + models (ne
 npx vite build  # sanity-check that the frontend compiles (dist/ is gitignored)
 ```
 
-`npm run dev` refuses to start unless `.env` has `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` and `SESSION_SECRET` (see `.env.example` / README). Port 5173 is fixed (`strictPort`) because it must match the GitHub OAuth App callback URL `http://localhost:5173/auth/callback`. Node >= 22.13 (for the built-in `node:sqlite`). `SLACK_USER_TOKEN` is optional; without it the Slack UI explains how to set it up. The chat needs Ollama (`gemma3:4b` + `nomic-embed-text` by default) or a cloud provider configured on `/settings`.
+`npm run dev` refuses to start unless `.env` has `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `SESSION_SECRET` and the three Slack tokens `SLACK_USER_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN` (`checkEnv()` in server.js; see `.env.example` / README). Slack is required, not optional: the bot and linked channels are the product's core. Port 5173 is fixed (`strictPort`) because it must match the GitHub OAuth App callback URL `http://localhost:5173/auth/callback`. Node >= 22.13 (for the built-in `node:sqlite`). The chat needs Ollama (`gemma3:4b` + `nomic-embed-text` by default) or a cloud provider configured on `/settings`.
 
 ## Architecture
 

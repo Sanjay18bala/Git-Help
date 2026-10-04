@@ -40,10 +40,12 @@ const cookies = (req) => Object.fromEntries(
 const cookie = (name, value, maxAge) =>
   `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
 
+// GitHub sign-in and the Slack app are both required: the Slack bot and linked channels are what GitHelp is for.
 export function checkEnv() {
-  const missing = ['GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET', 'SESSION_SECRET'].filter((k) => !process.env[k]);
+  const missing = ['GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET', 'SESSION_SECRET', 'SLACK_USER_TOKEN', 'SLACK_BOT_TOKEN', 'SLACK_APP_TOKEN']
+    .filter((k) => !process.env[k]);
   if (missing.length) {
-    throw new Error(`Missing ${missing.join(', ')} in .env. Copy .env.example to .env and fill it in (see README).`);
+    throw new Error(`Missing ${missing.join(', ')} in .env. Copy .env.example to .env and fill it in (README, "Set up").`);
   }
 }
 

@@ -1,265 +1,233 @@
 # GitHelp
 
-A read-only dashboard for everything in your GitHub account. Sign in with GitHub, pick a repository, and browse its
-branches, pull requests, issues, commits, Actions runs, releases and contributors in one place.
+GitHelp shows what's late in your GitHub repositories, and why.
 
-It runs on your own machine. You sign in through GitHub's own login page, so the app never sees your password.
+When an issue passes its milestone's due date, GitHelp's Slack bot messages the person it's assigned to and asks what's
+holding it up. Their reply is kept on the issue. Anyone can then ask GitHelp "why is #6 late?" and get the answer,
+with links to the GitHub issue and the Slack message it came from.
 
-## Features
+![The Overview of a repository: what's past due, how late, and each owner's reason](docs/overview.png)
 
-- Sign in with GitHub (OAuth)
-- All your repositories: personal, collaborator and organization, with a filter box
-- For each repository:
-  - Overview: stats, languages and README
-  - Branches
-  - Pull requests (open, closed or all), each with its description, changed files, reviews and comments
-  - Issues (open, closed or all), each with its labels, assignees and comments
-  - Commits
-  - GitHub Actions runs
-  - Releases
-  - Contributors
-- **Slack (optional):** link Slack channels to a repo and read their conversations and threads next to the code
-- **Chat (optional):** ask questions in the side panel and get answers grounded in the repo's issues, pull requests,
-  README and linked Slack channels, with links to every source. Runs on a local model through Ollama by default;
-  Anthropic (Claude) or any OpenAI-compatible API can be chosen on the **Settings** page.
-- Light and dark mode, following your system setting
+GitHelp is read-only on GitHub and runs on your own machine. By default the questions are answered by a local model
+through Ollama, so nothing leaves your computer.
 
-## Requirements
+## Contents
 
-- [Node.js](https://nodejs.org/) **22.13 or newer**. Check with `node -v`.
-- For the chat: [Ollama](https://ollama.com) (free, runs locally), or an API key for a cloud model.
-- A GitHub account
+- [What you need](#what-you-need)
+- [Set up](#set-up) (about 15 minutes)
+- [First run](#first-run)
+- [Using a cloud model instead of Ollama](#using-a-cloud-model-instead-of-ollama)
+- [Troubleshooting](#troubleshooting)
+- [Security and your data](#security-and-your-data)
+- [Development](#development)
 
-## Quick start
+## What you need
 
-These steps take about 5 minutes and work on macOS, Linux and Windows.
+- **Node.js 22.13 or newer.** Check with `node -v`.
+- **A GitHub account** with access to the repositories you want to track.
+- **A Slack workspace where you can install an app.** Some workspaces need an admin to approve new apps.
+- **[Ollama](https://ollama.com)** to run the models locally (free), or an Anthropic or OpenAI-compatible API key.
+  About 4 GB of disk for the default models.
+
+## Set up
 
 ### 1. Clone and install
 
 ```bash
-git clone <this-repo-url> git-help
-cd git-help
+git clone https://github.com/Sanjay18bala/Git-Help.git
+cd Git-Help
 npm install
 ```
 
 ### 2. Create a GitHub OAuth App
 
-Each person running GitHelp creates their own OAuth App. This is free and takes a minute.
+This lets you sign in with GitHub. Each person running GitHelp creates their own; it's free.
 
-1. Go to **GitHub → Settings → Developer settings → OAuth Apps → New OAuth App**,
-   or open <https://github.com/settings/applications/new> directly.
-2. Fill in the form **exactly** like this:
+1. Open <https://github.com/settings/applications/new>.
+2. Fill in the form exactly like this, then click **Register application**:
 
    | Field | Value |
    |---|---|
-   | Application name | `GitHelp (local)`, or any name you like |
+   | Application name | `GitHelp` (or anything you like) |
    | Homepage URL | `http://localhost:5173` |
    | Authorization callback URL | `http://localhost:5173/auth/callback` |
-   | Enable Device Flow | leave unchecked |
 
-3. Click **Register application**.
-4. Copy the **Client ID**.
-5. Click **Generate a new client secret** and copy the secret. GitHub shows it only once.
+3. Copy the **Client ID**.
+4. Click **Generate a new client secret** and copy it. GitHub shows it only once.
 
-### 3. Configure your `.env`
+### 3. Create the Slack app
 
-Copy the example file:
+The app does two jobs: it reads the channels you link to a repository, and its bot messages owners about late work
+and receives their replies.
+
+1. Open <https://api.slack.com/apps> and click **Create New App** → **From a manifest**. Pick your workspace.
+2. Choose **JSON**, replace everything with this manifest, and click **Next** → **Create**:
+
+   ```json
+   {
+     "display_information": {
+       "name": "GitHelp",
+       "description": "Asks owners why late GitHub work is late, and reads channels linked to your repositories."
+     },
+     "features": {
+       "bot_user": { "display_name": "GitHelp", "always_online": true },
+       "app_home": { "home_tab_enabled": false, "messages_tab_enabled": true, "messages_tab_read_only_enabled": false }
+     },
+     "oauth_config": {
+       "scopes": {
+         "user": ["channels:read", "channels:history", "groups:read", "groups:history", "users:read"],
+         "bot": ["chat:write", "im:write", "im:history", "users:read", "users:read.email", "channels:read", "groups:read"]
+       }
+     },
+     "settings": {
+       "event_subscriptions": { "bot_events": ["message.im"] },
+       "org_deploy_enabled": false,
+       "socket_mode_enabled": true,
+       "token_rotation_enabled": false
+     }
+   }
+   ```
+
+3. Go to **Install App** (left menu) → **Install to Workspace** → **Allow**.
+4. On **OAuth & Permissions**, copy two tokens:
+   - **User OAuth Token**, starting with `xoxp-`
+   - **Bot User OAuth Token**, starting with `xoxb-`
+5. On **Basic Information**, scroll to **App-Level Tokens** → **Generate Token and Scopes**. Name it `socket`, add the
+   `connections:write` scope, click **Generate**, and copy the token starting with `xapp-`. Leave token rotation off.
+
+### 4. Download the models
+
+Install [Ollama](https://ollama.com) and start it. Then download a chat model and an embedding model:
 
 ```bash
-cp .env.example .env        # macOS / Linux
+ollama pull gemma3:4b
+ollama pull nomic-embed-text
+```
+
+`gemma3:4b` needs about 3 GB of memory. With more, a larger model such as `qwen3:8b` gives better answers; you can
+switch models later in **Settings**.
+
+### 5. Fill in `.env`
+
+```bash
+cp .env.example .env        # macOS and Linux
 copy .env.example .env      # Windows
 ```
 
-Open `.env` and fill in all three values:
+Open `.env` and fill in every value:
 
 ```ini
-GITHUB_CLIENT_ID=Iv1.xxxxxxxxxxxxxxxx      # from step 2
-GITHUB_CLIENT_SECRET=xxxxxxxxxxxxxxxxxxxx  # from step 2
-SESSION_SECRET=                            # see below
+GITHUB_CLIENT_ID=...        # step 2
+GITHUB_CLIENT_SECRET=...    # step 2
+SESSION_SECRET=...          # see below
+SLACK_USER_TOKEN=xoxp-...   # step 3
+SLACK_BOT_TOKEN=xoxb-...    # step 3
+SLACK_APP_TOKEN=xapp-...    # step 3
 ```
 
-`SESSION_SECRET` is any long random string. It encrypts your login cookie. Generate one with:
+Put each value straight after the `=`, with no spaces or comments after it.
+
+`SESSION_SECRET` is any long random string; it encrypts your login and the keys GitHelp stores. Generate one with:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-`.env` is listed in `.gitignore`. **Never commit it.**
+`.env` is in `.gitignore`. Never commit it.
 
-### 4. Run
+### 6. Run
 
 ```bash
 npm run dev
 ```
 
-Open <http://localhost:5173> and click **Sign in with GitHub**.
+Open <http://localhost:5173> and click **Continue with GitHub**. If something in `.env` is missing, `npm run dev`
+stops and names it.
 
-### 5. Connect Slack (optional)
+## First run
 
-GitHelp reads Slack with a token from a small Slack app that you install into your own workspace. The app can only
-read; it can't post, edit or delete anything.
+GitHelp needs four things from you before it can do its job:
 
-1. Go to <https://api.slack.com/apps> → **Create New App** → **From a manifest**, and pick your workspace.
-2. Replace the example manifest with this one:
+1. **Give issues a deadline.** GitHelp takes deadlines from GitHub **milestones**: give a milestone a due date and add
+   issues to it. An open issue past its milestone's date counts as late.
+2. **Link a Slack channel.** Open a repository and click **Link Slack channel** at the top right. You can link
+   channels you're a member of. GitHelp copies the last 90 days of the channel so the chat can answer from it.
+3. **Match people.** In **Settings → Slack bot**, click **Match people from indexed repos**. GitHelp links GitHub users
+   to Slack users by commit email first, then full name. Check the matches; the bot only messages people whose link is
+   confirmed, and you can change any of them.
+4. **Turn on overdue alerts.** In **Settings → Overdue alerts**, switch on the repository. It shows exactly who would be
+   messaged before anything is sent. While GitHelp is running it checks every 15 minutes, messages the assignee of
+   each late issue once, and reminds them once after 3 days without a reply.
 
-   ```json
-   {
-       "display_information": {
-           "name": "GitHelp",
-           "description": "Read-only access so GitHelp can search channel history linked to GitHub repos."
-       },
-       "oauth_config": {
-           "scopes": {
-               "user": ["channels:read", "channels:history", "groups:read", "groups:history", "users:read"]
-           }
-       },
-       "settings": {
-           "org_deploy_enabled": false,
-           "socket_mode_enabled": false,
-           "is_hosted": false,
-           "token_rotation_enabled": false
-       }
-   }
-   ```
+When someone replies to the bot, their reason appears on the repository's **Overview** and on the issue. Press **⌘J**
+(Ctrl+J on Windows and Linux) or click **Ask a question** to ask about the repository; answers cite their sources.
 
-   The `groups:` scopes cover private channels you're in. Remove them if you only want public channels.
-3. Click **Create**, then **Install to Workspace** → **Allow**. Some workspaces need an admin to approve this.
-4. Open **OAuth & Permissions**, copy the **User OAuth Token** (`xoxp-…`) and add it to `.env`:
+## Using a cloud model instead of Ollama
 
-   ```ini
-   SLACK_USER_TOKEN=xoxp-...
-   ```
+In **Settings**, set the chat provider to **Anthropic** or **OpenAI-compatible** (OpenAI, Groq, OpenRouter, Together,
+LM Studio, vLLM), enter the API key and click **Save and test**. Anthropic has no embedding models, so search keeps
+using Ollama or an OpenAI-compatible embedding model.
 
-5. Restart `npm run dev`. On any repo, click **# link slack channel** and pick a channel. You can link channels
-   you're a member of.
-
-Linking copies the channel's last 90 days of messages and thread replies into `.data/git-help.db` on your machine.
-Open the repo's **Slack** tab to read them, **sync now** to fetch new messages, or **full resync** to re-read
-everything. Unlinking a channel deletes its local copy.
-
-### 6. Set up the chat (optional)
-
-The chat panel answers questions using retrieval-augmented generation (RAG): it searches the repo's issues, pull
-requests, comments and README plus its linked Slack channels, then asks a language model to answer from what it
-found and cite it.
-
-**Local (default, nothing leaves your machine):** install [Ollama](https://ollama.com), then download a chat model and
-an embedding model:
-
-```bash
-ollama pull gemma3:4b          # chat model (~3 GB). Larger ones like qwen3:8b give better answers if you have the RAM.
-ollama pull nomic-embed-text   # embedding model, used for search
-```
-
-**Cloud:** open **Settings** in the app, pick **Anthropic** or an **OpenAI-compatible API** (OpenAI, Groq,
-OpenRouter, LM Studio…), enter the API key and click **save & test connection**. Keys are stored encrypted in
-`.data/` and can also come from `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `OPENAI_BASE_URL` in `.env`. With a cloud
-provider, your question and the matching Slack and GitHub text are sent to that provider.
-
-**Context:** inside a repo, the chat searches only that repo and its linked channels. On the repository list it
-searches everything indexed so far. A repo is indexed the first time you ask about it; linked channels are re-indexed
-on every Slack sync, and the repo's **Slack** tab has a **rebuild index** button.
-
-### 7. Overdue alerts (optional)
-
-Issues get a deadline from their **milestone's due date**. GitHelp shows "overdue" badges, and its Slack bot can DM
-the assignee of an overdue issue to ask what's holding it up. Their reply is shown on the issue and the chat uses it
-to answer "why isn't #14 done?".
-
-1. In your Slack app's **App Manifest**, add a bot user, the Messages tab, bot scopes and Socket Mode:
-
-   ```json
-   "features": {
-       "bot_user": { "display_name": "GitHelp", "always_online": true },
-       "app_home": { "messages_tab_enabled": true, "messages_tab_read_only_enabled": false }
-   },
-   "oauth_config": { "scopes": {
-       "user": ["channels:read", "channels:history", "groups:read", "groups:history", "users:read", "chat:write"],
-       "bot": ["chat:write", "im:write", "im:history", "users:read", "users:read.email", "channels:read", "groups:read"]
-   } },
-   "settings": { "event_subscriptions": { "bot_events": ["message.im"] }, "socket_mode_enabled": true, … }
-   ```
-
-2. Reinstall the app. Copy the **Bot User OAuth Token** (`xoxb-…`) to `.env` as `SLACK_BOT_TOKEN`, and create an
-   **App-Level Token** with the `connections:write` scope (Basic Information) as `SLACK_APP_TOKEN` (`xapp-…`).
-   Leave app-level token rotation off.
-3. Restart `npm run dev`. In **Settings → slack bot**, click **match people**: GitHub logins are linked to Slack
-   users by commit email, then full name; weaker matches wait for you to confirm. The bot only messages confirmed links.
-4. In **Settings → overdue alerts**, turn a repo on. The preview shows exactly who would be messaged before anything
-   is sent. Checks run every 15 minutes while the app is running; one reminder after 3 days without a reply.
-
-To run checks without the page open, GitHelp keeps your GitHub token in `.data/`, encrypted with `SESSION_SECRET`;
-signing out deletes it.
+Keys are stored encrypted on your machine. With a cloud provider, each question and the GitHub and Slack text that
+matches it are sent to that provider.
 
 ## Troubleshooting
 
 | What you see | Fix |
 |---|---|
-| `Missing GITHUB_CLIENT_ID, ... in .env` when starting | You skipped step 3, or `.env` isn't in the project root. |
-| GitHub says **"The redirect_uri is not associated with this application"** | The callback URL in your OAuth App must be exactly `http://localhost:5173/auth/callback`. |
-| `Port 5173 is in use` | Something else is using the port. Stop it; the port can't change without also changing your OAuth App URLs. |
-| `Sign-in failed: state_mismatch` | Start the sign-in again from <http://localhost:5173>. Don't reuse an old GitHub tab. |
-| `Sign-in failed: bad_verification_code` | The login code expired. Sign in again. |
-| `Sign-in failed: incorrect_client_credentials` | The client ID or secret in `.env` is wrong. Copy them again and restart `npm run dev`. |
-| Slack: "isn't set up" or "token is invalid" | Check `SLACK_USER_TOKEN` in `.env` (it starts with `xoxp-`) and restart `npm run dev`. |
-| Slack: a channel is missing from the picker | You can only link channels you're a member of. Join it in Slack first. |
-| Slack: "missing a permission" | Compare your Slack app's **User Token Scopes** with the manifest above, then reinstall the app. |
-| Chat: "Can't reach Ollama" | Start Ollama (`ollama serve`, or open the Ollama app), or fix the URL in **Settings**. |
-| Chat: "model … not found" | Download it with `ollama pull <model>`, or pick an installed one in **Settings**. |
-| Chat answers are vague or wrong | Small local models make mistakes. Check the cited sources, or try a larger model in **Settings**. |
-| An organization's repositories are missing | The organization restricts third-party apps. Open <https://github.com/settings/applications>, select your app, and click **Grant** or **Request** next to the organization. |
-| `API rate limit exceeded` | GitHub allows 5,000 requests per hour. Wait for the limit to reset. |
+| `Missing ... in .env` when starting | Fill in the named values (step 5) and make sure `.env` is in the project folder. |
+| GitHub: **"The redirect_uri is not associated with this application"** | The callback URL in your OAuth App must be exactly `http://localhost:5173/auth/callback`. |
+| `Port 5173 is in use` | Stop whatever is using it. The port can't change without also changing your OAuth App URLs. |
+| `Sign-in failed: state_mismatch` | Start again from <http://localhost:5173> instead of an old GitHub tab. |
+| `Sign-in failed: incorrect_client_credentials` | The client ID or secret in `.env` is wrong. Copy them again and restart. |
+| Slack: "token is invalid" or "missing a permission" | Check the three Slack tokens in `.env`. If you edited the manifest, reinstall the app (**Install App** → **Reinstall**) and copy the tokens again. |
+| A channel is missing from **Link Slack channel** | You can only link channels you're a member of. Join it in Slack first. |
+| The bot sends nothing | Check that the repo is switched on in **Settings → Overdue alerts**, the issue has an assignee and a milestone with a past due date, and that person's Slack link is confirmed. |
+| Replies to the bot don't show up | `SLACK_APP_TOKEN` is missing or wrong, or **Socket Mode** is off in the Slack app. **Settings → Slack bot** says when replies can't be received. |
+| "Can't reach Ollama" | Start Ollama (open the app, or run `ollama serve`), or fix the URL in **Settings**. |
+| "model … not found" | Download it with `ollama pull <model>`, or pick an installed model in **Settings**. |
+| An organization's repositories are missing | The organization restricts third-party apps. Open <https://github.com/settings/applications>, select your app, and click **Grant** or **Request** for the organization. |
+| `API rate limit exceeded` | GitHub allows 5,000 requests per hour. Wait for it to reset. |
 
-## Permissions and security
+## Security and your data
 
-- **Scopes requested:** `repo` and `read:org`. GitHub has no read-only scope for private repositories, so `repo` is
-  the minimum that lets you see them.
-- **Read-only:** the local server forwards only `GET` requests, and only to the specific endpoints the UI uses (see
-  `ALLOWED` in `server.js`). Nothing in GitHelp can change your repositories.
-- **Token storage:** your GitHub token is kept in an encrypted, `HttpOnly` cookie. It never reaches the page's
-  JavaScript, and nothing is stored on disk or sent anywhere except `api.github.com`.
-- **Slack data stays local:** linked channels are copied into `.data/git-help.db` on your machine (gitignored) and
-  are only sent to your own browser. The Slack token never leaves the server.
-- **Revoke access** at any time from <https://github.com/settings/applications> (GitHub) and your Slack app's
-  settings page (Slack).
+- **Read-only on GitHub.** GitHub has no read-only scope for private repositories, so GitHelp asks for `repo` and
+  `read:org`. The local server only forwards `GET` requests, and only to the endpoints the app uses (`ALLOWED` in
+  `server.js`), so GitHelp can't change anything in your repositories.
+- **Your GitHub token** is kept in an encrypted, `HttpOnly` cookie that the page's JavaScript can't read. So that
+  overdue checks can run in the background, an encrypted copy is also stored in `.data/`; signing out deletes it.
+- **Slack.** The user token only reads channels you link. The bot only messages people whose link you confirmed, and
+  only about late issues in repositories you switched on.
+- **Everything stays on your machine.** Linked channels, replies and the search index live in `.data/git-help.db`
+  (gitignored). Nothing is sent anywhere except GitHub, Slack and the model provider you chose.
+- **Revoke access** at <https://github.com/settings/applications> and from your Slack app's settings.
 
-## How it works
+## Development
 
-```
-Browser (React)  ──/api/gh/*────▶  server.js  ──Bearer token──▶  api.github.com
-                 ──/api/slack/*─▶  (inside the   ──user token──▶  slack.com/api
-                 ◀──────────────   Vite server)  ──▶ .data/git-help.db (linked channels)
+```bash
+npm test                 # unit tests (node --test, no framework)
+npx vite build           # check that the frontend compiles
+node eval/rag-eval.js    # answer-quality check against a running dev server and the demo data
 ```
 
 | File | What it does |
 |---|---|
-| `server.js` | OAuth login and logout, the encrypted session cookie, and the read-only GitHub proxy with its endpoint allowlist |
-| `slack.js` | Slack API calls (with rate-limit retries) and channel sync |
-| `rag.js` | Chat retrieval: chunking Slack and GitHub content, embeddings, hybrid keyword + vector search, cited answers |
-| `llm.js` | Model providers (Ollama, Anthropic, OpenAI-compatible) and the settings behind the Settings page |
-| `db.js`, `secrets.js` | The local SQLite database (`.data/git-help.db`), and the encryption used for cookies and API keys |
-| `vite.config.js` | Runs `server.js` inside the Vite dev server, so there's one command and one port |
-| `src/main.jsx` | The whole UI: routes, pages and the `useGitHub(path)` data hook |
-| `src/style.css` | Styles, with light and dark themes |
-| `*.test.js` | Allowlist and cookie encryption; Slack sync and the RAG pipeline against fake Slack, GitHub and Ollama APIs |
-| `eval/rag-eval.js` | Answer key for the chat against the brewlog demo data, run through the real dev server and models |
+| `server.js` | Sign-in, the encrypted session cookie, the read-only GitHub proxy, and the API the UI calls |
+| `slack.js` | Reading Slack and syncing linked channels |
+| `bot.js` | The Slack bot: matching GitHub users to Slack users |
+| `alerts.js` | Overdue checks, the bot's messages, and receiving replies over Socket Mode |
+| `rag.js`, `llm.js` | Search and answers: indexing, hybrid keyword and vector search, model providers |
+| `db.js`, `secrets.js` | The local SQLite database, and encryption for cookies and stored keys |
+| `src/main.jsx`, `src/style.css` | The whole interface |
 
-## Contributing
+`CLAUDE.md` describes the architecture and design rules in more detail.
 
-Contributions are welcome.
+To show new GitHub data: add the endpoint to `ALLOWED` in `server.js`, add a case to `server.test.js`, then fetch it
+in the UI. Write actions (commenting, merging) are deliberately out of scope; please open an issue to discuss them
+first.
 
-1. Fork the repository and create a branch.
-2. Make your change and run the tests:
-   ```bash
-   npm test
-   ```
-3. Open a pull request that describes what changed and why.
-
-**Showing new GitHub data:** add the endpoint pattern to `ALLOWED` in `server.js`, add a matching case in
-`server.test.js`, then fetch it in the UI with `useGitHub('repos/owner/repo/...')` or `<List path=... />`.
-
-**Write actions** (commenting, merging and so on) are deliberately out of scope for now. Please open an issue to
-discuss them before sending a pull request.
+Contributions are welcome: fork, make your change, run `npm test`, and open a pull request explaining what changed and
+why.
 
 ## License
 
