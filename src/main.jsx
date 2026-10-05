@@ -34,7 +34,7 @@ function ago(iso) {
 const date = (s) => (s ? ago(s) : '');
 const Time = ({ value }) => (value ? <time dateTime={value} title={new Date(value).toLocaleString()}>{ago(value)}</time> : null);
 
-// Browser tab title per page, like GitHub's "#14 Title · owner/repo".
+// Browser tab title per page, like GitHub's "#123 Title · owner/repo".
 const useTitle = (title) => useEffect(() => { document.title = title ? `${title} · GitHelp` : 'GitHelp'; }, [title]);
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -536,7 +536,7 @@ function SlackThreads({ threads }) {
   );
 }
 
-// Replies the assignee gave the Git-Help bot about this issue being late (alerts.js).
+// Replies the assignee gave the GitHelp bot about this issue being late (alerts.js).
 function LateReasons({ repo, number }) {
   const [rows, setRows] = useState([]);
   useEffect(() => {
@@ -846,7 +846,7 @@ function Home() {
 
 // The core loop on the sign-in page, built from the app's own styles: a late issue, the bot's Slack DM and its
 // reply, then Ask answering with the reason. Advances every few seconds unless the visitor prefers reduced motion
-// or picks a step. Demo data: the brewlog demo repo under the fictional owner "maya".
+// or picks a step. The repository, people and issues are made up for illustration.
 const DEMO_STEPS = ['Spot what’s late', 'The bot asks why', 'Ask and get the reason'];
 function LandingDemo() {
   const [step, setStep] = useState(0);
@@ -858,7 +858,7 @@ function LandingDemo() {
   }, [auto, step]);
   const pick = (i) => { setAuto(false); setStep(i); };
   return (
-    <section className="demo" aria-label="How GitHelp works, with a demo repository">
+    <section className="demo" aria-label="How GitHelp works, with an example repository">
       <div className={`demo-steps${auto ? ' auto' : ''}`} role="tablist" aria-label="Demo steps">
         {DEMO_STEPS.map((label, i) => (
           <button key={label} type="button" role="tab" aria-selected={step === i} aria-controls="demo-panel" onClick={() => pick(i)}>
@@ -867,40 +867,40 @@ function LandingDemo() {
         ))}
       </div>
       <div className="demo-frame" id="demo-panel" role="tabpanel" aria-live="polite">
-        <div className="demo-bar"><span>maya/brewlog</span><span>{['Overview', 'Slack · direct message', 'Ask'][step]}</span></div>
+        <div className="demo-bar"><span>acme/storefront</span><span>{['Overview', 'Slack · direct message', 'Ask'][step]}</span></div>
         {step === 0 && (
           <div className="demo-body" key="s0">
-            <p className="demo-lead">4 items in v0.3.0 are past due. None has a reason from the assignee yet.</p>
+            <p className="demo-lead">2 items in v2.4 are past due. None has a reason from the assignee yet.</p>
             <div className="ledger-row">
               <div className="ledger-item">
-                <span className="ledger-title">Add grind size field to brews</span>
-                <p className="ledger-meta"><span className="ref">#6</span> · Issue · maya · <span className="late-text">4 days late</span></p>
+                <span className="ledger-title">Add rate limiting to the checkout API</span>
+                <p className="ledger-meta"><span className="ref">#212</span> · Issue · alex · <span className="late-text">3 days late</span></p>
               </div>
-              <div className="ledger-why"><p className="muted">No reason yet. Asked Oct 1, no reply.</p></div>
+              <div className="ledger-why"><p className="muted">No reason yet. Asked Oct 2, no reply.</p></div>
             </div>
             <div className="ledger-row">
               <div className="ledger-item">
-                <span className="ledger-title">Run tests on every push and pull request</span>
-                <p className="ledger-meta"><span className="ref">#8</span> · Issue · maya · <span className="late-text">4 days late</span></p>
+                <span className="ledger-title">Fix flaky payment webhook tests</span>
+                <p className="ledger-meta"><span className="ref">#198</span> · Issue · sam · <span className="late-text">3 days late</span></p>
               </div>
-              <div className="ledger-why"><p className="muted">No reason yet. Asked Oct 1, no reply.</p></div>
+              <div className="ledger-why"><p className="muted">No reason yet. Asked Oct 2, no reply.</p></div>
             </div>
           </div>
         )}
         {step === 1 && (
           <div className="demo-body demo-dm" key="s1">
-            <div className="dm-msg"><b>GitHelp</b><p>Hi! #6 Add grind size field to brews in maya/brewlog was due Sep 29 (milestone v0.3.0) and is still open. What's holding it up?</p></div>
-            <div className="dm-msg"><b>maya</b><p className="dm-reply">I was sick</p></div>
-            <div className="dm-msg"><b>GitHelp</b><p>Thanks, noted for #6. I'll share it when someone asks why it's late.</p></div>
+            <div className="dm-msg"><b>GitHelp</b><p>Hi! #212 Add rate limiting to the checkout API in acme/storefront was due Oct 2 (milestone v2.4) and is still open. What's holding it up?</p></div>
+            <div className="dm-msg"><b>alex</b><p className="dm-reply">Waiting on the security review. Should be done Friday.</p></div>
+            <div className="dm-msg"><b>GitHelp</b><p>Thanks, noted for #212, expected by Fri, Oct 9. I'll share it when someone asks why it's late.</p></div>
           </div>
         )}
         {step === 2 && (
           <div className="demo-body" key="s2">
-            <p className="demo-q">Why is #6 late?</p>
-            <p>Issue #6 "Add grind size field to brews" is late because maya said they were sick <span className="cite">[1]</span><span className="cite">[2]</span>.</p>
+            <p className="demo-q">Why is #212 late?</p>
+            <p>#212 "Add rate limiting to the checkout API" is waiting on the security review, and alex expects to finish it by Friday, Oct 9 <span className="cite">[1]</span><span className="cite">[2]</span>.</p>
             <ol className="demo-sources">
-              <li>Issue #6, status and reason <span className="muted">· GitHub</span></li>
-              <li>maya's reply to the overdue alert <span className="muted">· Slack DM, Oct 1</span></li>
+              <li>Issue #212, status and reason <span className="muted">· GitHub</span></li>
+              <li>alex's reply to the overdue alert <span className="muted">· Slack DM</span></li>
             </ol>
           </div>
         )}
@@ -909,7 +909,87 @@ function LandingDemo() {
   );
 }
 
-// ⌘K / Ctrl+K: jump to a page, a repo, or an issue/PR in the current repo ("#14" goes straight there).
+// ---------- Help: everything a person needs to know, searchable ----------
+// Plain text so search can match every word; keys (⌘K) are written out. Keep answers true to the code: if a
+// behaviour changes, change its answer here too.
+const HELP = [
+  ['Getting started', [
+    ['What does GitHelp do?', 'It shows what is late in your GitHub repositories and why. When an issue passes its milestone’s due date, GitHelp’s Slack bot asks the person it is assigned to what is holding it up and when they expect to finish. Their answers appear next to the issue, in a Slack digest if you turn one on, and in Ask, which answers questions about a repository with links to its sources.'],
+    ['Can GitHelp change anything in my repositories?', 'No. It only reads from GitHub. Its server forwards read requests only, to a fixed list of endpoints, so it cannot comment, merge, close or edit anything. GitHub has no read-only permission for private repositories, which is why the sign-in asks for repository access.'],
+    ['Which repositories can I see?', 'Every repository your GitHub account can read: your own, ones you collaborate on, and ones your organizations share. If an organization’s repositories are missing, that organization restricts third-party apps: open github.com/settings/applications, choose your GitHelp app and grant or request access for the organization.'],
+    ['What do I need to set up first?', 'For deadlines: give milestones a due date on GitHub and add issues to them. For reasons: link a Slack channel to the repository, match people in Settings → Slack bot, and turn on Settings → Overdue alerts for the repository. Everything else works as soon as you sign in.'],
+  ]],
+  ['Deadlines', [
+    ['Where do deadlines come from?', 'From GitHub milestones. An issue or pull request gets the due date of its milestone. GitHub has no due date on single issues, so an item without a milestone, or in a milestone without a due date, has no deadline.'],
+    ['When does something count as late?', 'When it is still open the day after its milestone’s due date. Closed items are never late. Due dates are calendar days, so time zones don’t move them.'],
+    ['What does the Overview show?', 'A sentence saying how much is past due and how much of it is explained, a line with each milestone and today on it, every late item with how late it is and its reason (or exactly why there isn’t one), what is due next, and pull requests waiting for review. Below that are the repository’s details and README.'],
+    ['What is the Attention page?', 'Everything that is past due across all the repositories GitHelp has indexed, worst first, plus what is due in the next two weeks. The number next to Attention in the sidebar is the total that is past due.'],
+    ['How up to date is the Overview?', 'A repository is read from GitHub the first time you open it. After that it is refreshed whenever you ask a question about it and the data is more than 10 minutes old, and every 15 minutes while GitHelp runs for repositories with overdue alerts or a digest turned on.'],
+  ]],
+  ['The Slack bot', [
+    ['Who does the bot message?', 'The people assigned to an open issue that is past its milestone’s due date, in repositories where Settings → Overdue alerts is on, and only people whose GitHub account is linked to their Slack account and confirmed. It doesn’t message about pull requests or unassigned issues.'],
+    ['How does GitHelp know who is who on Slack?', 'Settings → Slack bot → Match people compares GitHub users with Slack users: first by commit email, then by full name. Those matches are confirmed automatically. Weaker matches (Slack handle, first name only) wait for you to confirm, and you can pick anyone by hand. A choice you make by hand is never overwritten.'],
+    ['What does the bot say, and how often?', 'One message when the issue becomes late, asking what is holding it up. If there is no reply after 3 days, one reminder. Nothing more until the milestone’s date changes. Settings → Overdue alerts shows exactly who would be messaged before anything is sent.'],
+    ['What happens when someone replies?', 'The first reply is kept as the reason. The bot then asks when they expect to finish, and understands answers like Friday, Oct 9, 10/9, tomorrow, in 3 days, end of week or next week. A reply that already names a date counts as both. The reason and date appear on the Overview, the Attention page, the digest and in Ask.'],
+    ['What if the expected date passes?', 'While the date is ahead the bot stays quiet. If it passes and the issue is still open, the bot asks once for an update and a new date.'],
+    ['Do people have to reply in a thread?', 'No. A reply in the bot’s thread belongs to that issue; a message in the direct message without a thread goes to the most recent issue the bot asked about.'],
+    ['When does the bot run?', 'Every 15 minutes, but only while GitHelp is running. To keep it running for your team, run GitHelp on an always-on machine (see the README).'],
+  ]],
+  ['Slack channels and the digest', [
+    ['Which Slack channels can I link?', 'Channels you are a member of, public or private. Use Link Slack channel at the top of a repository. You can link several channels to a repository, and one channel to several repositories.'],
+    ['What happens when I link a channel?', 'GitHelp copies the channel’s last 90 days of messages and thread replies to this machine so Ask can answer from them. The Slack tab shows them; Sync now fetches new messages and Full resync reads everything again. Unlinking a channel from its last repository deletes the copy.'],
+    ['What is the digest?', 'A short message the bot posts to a repository’s linked channels: every late item with how late it is and its reason, then what is due next. Choose Daily (weekdays) or Weekly (Mondays) in Settings → Slack digest. It posts at 9:00, once per day or week, and a daily digest skips days with nothing late or due soon. Preview shows the exact message and Post now sends it straight away.'],
+    ['The digest says the bot isn’t in the channel', 'The bot can only post in channels it has been added to. Type /invite @GitHelp in the channel, then try again.'],
+  ]],
+  ['Ask', [
+    ['What can Ask answer?', 'Questions about the work: why something is late, when it will be done, what was decided and why, who is working on what, what is blocking a release, how many issues are open. Inside a repository it uses that repository’s issues, pull requests, comments, README, linked Slack channels and replies to the bot. On the other pages it uses everything indexed so far. Every answer links its sources.'],
+    ['How do I open Ask?', 'Click Ask a question in the sidebar or press ⌘J (Ctrl+J on Windows and Linux). Press / anywhere outside a text field to jump to it. Buttons like Ask why it’s late ask for you.'],
+    ['Which model answers, and where does my data go?', 'By default a model running on this machine through Ollama, so nothing leaves it. In Settings you can choose Anthropic or any OpenAI-compatible service instead; then each question and the GitHub and Slack text that matches it are sent to that service.'],
+    ['An answer is wrong or vague', 'Check the cited sources: answers come only from them. Small local models make mistakes; a larger model (Settings → Chat model) gives better answers if your machine has the memory.'],
+  ]],
+  ['Using the app', [
+    ['Keyboard shortcuts', '⌘K (Ctrl+K) opens search: type a repository, a page, part of an issue title, or an issue number to jump straight to it. ⌘J (Ctrl+J) opens or closes Ask. / jumps to Ask.'],
+    ['How do I change the theme?', 'Settings → Appearance: Light, Graphite or Slate. It applies straight away and is remembered in this browser.'],
+    ['What is on an issue or pull request page?', 'The description, a timeline of comments, reviews, commits, labels and references, and a sidebar with assignees, labels, the milestone and linked items. Pull requests also show their changed files as a diff with review comments in place, and late issues show the owner’s reason.'],
+  ]],
+  ['Privacy and access', [
+    ['Where is my data kept?', 'On the machine running GitHelp, in its .data folder: linked Slack channels, replies to the bot, settings and the search index. Nothing is sent anywhere except GitHub, Slack and the model service you chose.'],
+    ['How are my tokens kept?', 'Your GitHub sign-in is in an encrypted cookie the page itself can’t read. So that overdue checks can run with no browser open, an encrypted copy is also stored; signing out deletes it. API keys entered in Settings are stored encrypted and never sent back to the browser.'],
+    ['Who can sign in?', 'On your own computer, you. When GitHelp runs on a server, only the GitHub accounts listed in ALLOWED_GITHUB_USERS, because anyone signed in can read the linked Slack channels.'],
+    ['How do I revoke access?', 'For GitHub, at github.com/settings/applications. For Slack, from your Slack app’s settings page. Signing out of GitHelp ends your session and deletes its stored copy of your GitHub access.'],
+  ]],
+];
+
+function HelpPage() {
+  useTitle('Help');
+  const [q, setQ] = useState('');
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const match = (text) => words.every((w) => text.toLowerCase().includes(w));
+  const sections = HELP.map(([title, items]) => [title, items.filter(([question, answer]) => match(`${title} ${question} ${answer}`))])
+    .filter(([, items]) => items.length);
+  const count = sections.reduce((n, [, items]) => n + items.length, 0);
+  const slug = (t) => t.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return (
+    <div className="help">
+      <h1>Help</h1>
+      <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search help" aria-label="Search help" autoFocus />
+      {words.length > 0 && <p className="muted" role="status">{count ? plural(count, 'answer') : 'No answers match. Try fewer or different words.'}</p>}
+      {sections.map(([title, items]) => (
+        <section key={title} className="help-section" aria-labelledby={`help-${slug(title)}`}>
+          <h2 id={`help-${slug(title)}`}>{title}</h2>
+          {items.map(([question, answer]) => (
+            <details key={question} id={slug(question)} open={words.length > 0}>
+              <summary>{question}</summary>
+              <p>{answer}</p>
+            </details>
+          ))}
+        </section>
+      ))}
+    </div>
+  );
+}
+
+// ⌘K / Ctrl+K: jump to a page, a repo, or an issue/PR in the current repo (a number goes straight to that item).
 const REPOS_PATH = 'user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member';
 function QuickSearch({ repo, onClose }) {
   const nav = useNavigate();
@@ -931,7 +1011,7 @@ function QuickSearch({ repo, onClose }) {
     results.push({ key: `n${num}`, group: 'Go to', icon: i && <StateIcon item={i} />, label: i ? `#${num} ${i.title}` : `#${num}`,
       run: go(`/repos/${repo}/${i?.pull_request ? 'pulls' : 'issues'}/${num}`) });
   }
-  const pages = [['Attention', '/attention'], ['Repositories', '/repos'], ['Settings', '/settings'],
+  const pages = [['Attention', '/attention'], ['Repositories', '/repos'], ['Settings', '/settings'], ['Help', '/help'],
     ...(repo ? Object.entries(TABS).map(([k, label]) => [`${label} · ${repo.split('/')[1]}`, `/repos/${repo}/${k === 'code' ? 'commits' : k}`]) : [])];
   for (const [label, to] of pages) if (hit(label)) results.push({ key: to, group: 'Pages', label, run: go(to) });
   if (repo && Array.isArray(items.data)) {
@@ -958,7 +1038,7 @@ function QuickSearch({ repo, onClose }) {
 
   return (
     <dialog ref={ref} className="dialog palette" onClose={onClose} onClick={(e) => e.target === ref.current && onClose()} aria-label="Quick search">
-      <input type="search" autoFocus placeholder={repo ? `Search ${repo.split('/')[1]}, repos and pages… (#14 jumps to an issue)` : 'Search repos and pages…'}
+      <input type="search" autoFocus placeholder={repo ? `Search ${repo.split('/')[1]}, repos and pages. Type a number to jump to it.` : 'Search repos and pages…'}
         value={q} onChange={(e) => { setQ(e.target.value); setSel(0); }} onKeyDown={onKey}
         role="combobox" aria-expanded="true" aria-controls="palette-results" aria-activedescendant={results[active] ? `pr-${results[active].key}` : undefined} />
       <ul id="palette-results" role="listbox" className="palette-results">
@@ -1036,6 +1116,7 @@ function Layout() {
             <NavLink to="/repos" end>Repositories</NavLink>
             {repo && <NavLink to={`/repos/${repo}`} className="side-repo" title={repo}>{repo.split('/')[1]}</NavLink>}
             <NavLink to="/settings">Settings</NavLink>
+            <NavLink to="/help">Help</NavLink>
           </nav>
           <button type="button" className="side-ask" aria-pressed={askOpen} onClick={() => showAsk(!askOpen)}>
             <span>{askOpen ? 'Close Ask' : 'Ask a question'}</span><kbd>{KEY}J</kbd>
@@ -1523,7 +1604,7 @@ function Reason({ r }) {
   );
 }
 
-// Issue titles use Markdown backticks for code ("Colorize `brewlog list` output"); show those as code.
+// Issue titles use Markdown backticks for code ("Fix `npm test` on Windows"); show those as code.
 const Title = ({ text }) => text.split(/`([^`]+)`/).map((part, i) => (i % 2 ? <code key={i}>{part}</code> : part));
 
 const WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
@@ -1886,7 +1967,7 @@ function Repo() {
   );
 }
 
-// One line of the activity timeline for events that aren't comments ("added label bug", "mentioned this in #13").
+// One line of the activity timeline for events that aren't comments ("added label bug", "mentioned this in #123").
 function eventText(e, link) {
   const ref = (i) => <Link to={link(i)}>#{i.number} <Title text={i.title} /></Link>;
   switch (e.event) {
@@ -2155,6 +2236,7 @@ createRoot(document.getElementById('root')).render(
           <Route path="/attention" element={<AttentionPage />} />
           <Route path="/repos" element={<Repos />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/help" element={<HelpPage />} />
           <Route path="/repos/:owner/:repo/:tab?" element={<Repo />} />
           <Route path="/repos/:owner/:repo/pulls/:n" element={<Detail kind="pulls" />} />
           <Route path="/repos/:owner/:repo/issues/:n" element={<Detail kind="issues" />} />

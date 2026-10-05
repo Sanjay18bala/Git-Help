@@ -69,7 +69,7 @@ assert.match(posted.at(-1).text, /Thanks, noted for #14/);
 assert.equal(posted.at(-1).thread_ts, alertTs);
 d.prepare("INSERT INTO indexed_repos VALUES ('o/r', '2026-10-01T00:00:00Z')").run();
 assert.match(rag.repoOverview('o/r').text, /#14 CSV breaks \(issue; assigned to priya; milestone v1, due 2026-09-29, \d+ days late; reason given by priya on \d{4}-\d\d-\d\d: "Waiting on review of the quoting fix"\)/);
-assert.match(d.prepare("SELECT text FROM chunks WHERE id LIKE 'followup:%'").get().text, /priya \(the assignee\) replied to the Git-Help bot about overdue issue #14 "CSV breaks"/);
+assert.match(d.prepare("SELECT text FROM chunks WHERE id LIKE 'followup:%'").get().text, /priya \(the assignee\) replied to the GitHelp bot about overdue issue #14 "CSV breaks"/);
 
 // After a reply: no reminder. A message with no alert in that DM is ignored.
 assert.deepEqual(realPlan(today, sentAt + 5 * 86_400_000).send, []);

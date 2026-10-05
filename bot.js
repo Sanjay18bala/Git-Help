@@ -1,4 +1,4 @@
-// The Git-Help Slack bot (SLACK_BOT_TOKEN): who's who between GitHub and Slack, and later DMs about overdue work.
+// The GitHelp Slack bot (SLACK_BOT_TOKEN): who's who between GitHub and Slack, and later DMs about overdue work.
 // slack.js reads channels as the user; this file is the only place that acts as the bot.
 import { db } from './db.js';
 import { SlackError } from './slack.js';

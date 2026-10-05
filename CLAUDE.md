@@ -58,6 +58,11 @@ A read-only GitHub dashboard: Express backend + React SPA, both served by one Vi
 - **Replies**: Socket Mode (`SLACK_APP_TOKEN`, Node's built-in WebSocket) receives `message.im`; `recordReply()` maps a reply to its alert by `thread_ts`, else the latest alert in that DM, stores a `followups` row, thanks the user, and `indexFollowups()` makes it a chunk (`followup:` ids, excluded from GitHub re-indexing). `repoOverview()` adds the latest reason to each overdue line and precomputed "with a reason / no reason yet" counts (the 4B model misread the per-line text).
 - **Background**: `startBackground()` (called from vite.config) runs a 15-minute check + the socket. It lives on `globalThis.__gitHelpAlerts` and a new start stops the old one, because Vite restarts re-import the module and old timers/sockets would otherwise keep running and double-send. It uses the signed-in user's GitHub token stored sealed in `settings` (`github`), saved on login/any authenticated request and deleted on sign-out.
 
+### Help page and examples
+
+- `HelpPage` (`/help`, in the sidebar and ⌘K) is the user guide: a searchable FAQ built from the `HELP` array in main.jsx. When behaviour changes, update its answer there; the README only covers installing and points to Help.
+- **No real repositories, people or issues in the product.** UI copy, placeholders, the sign-in demo (a made-up `acme/storefront`), Help and the README stay general; the brewlog demo data is only for local testing, the eval and tests.
+
 ### Expected finish dates (`dates.js`, `etas` table)
 
 - After the first reply to an alert (stored as the reason), the bot asks when the assignee expects to finish; `parseDate()` reads "Friday", "Oct 9", "10/9", "in 3 days", "end of week", "next week" and similar into YYYY-MM-DD (exact day/month names only, so "I sat on it" or "decide 5" aren't dates). A reply with no date while none is known is not stored, the bot asks again; once a date is known, later replies are stored as further reasons. A date inside the first reply ("sick, done by Friday") counts.

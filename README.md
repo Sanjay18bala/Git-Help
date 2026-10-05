@@ -3,10 +3,10 @@
 GitHelp shows what's late in your GitHub repositories, and why.
 
 When an issue passes its milestone's due date, GitHelp's Slack bot messages the person it's assigned to and asks what's
-holding it up. Their reply is kept on the issue. Anyone can then ask GitHelp "why is #6 late?" and get the answer,
+holding it up. Their reply is kept on the issue. Anyone can then ask GitHelp why an issue is late and get the answer,
 with links to the GitHub issue and the Slack message it came from.
 
-![The Overview of a repository: what's past due, how late, and each owner's reason](docs/overview.png)
+![GitHelp's sign-in page, with an example of a late issue, the bot's Slack message and the answer to "why is it late?"](docs/githelp.png)
 
 GitHelp is read-only on GitHub and runs on your own machine. By default the questions are answered by a local model
 through Ollama, so nothing leaves your computer.
@@ -147,26 +147,10 @@ stops and names it.
 
 ## First run
 
-GitHelp needs four things from you before it can do its job:
+Sign in and open a repository. Deadlines come from GitHub milestones, so give a milestone a due date to see what's late.
+To have the bot ask people why, link a Slack channel to the repository and turn on overdue alerts in **Settings**.
 
-1. **Give issues a deadline.** GitHelp takes deadlines from GitHub **milestones**: give a milestone a due date and add
-   issues to it. An open issue past its milestone's date counts as late.
-2. **Link a Slack channel.** Open a repository and click **Link Slack channel** at the top right. You can link
-   channels you're a member of. GitHelp copies the last 90 days of the channel so the chat can answer from it.
-3. **Match people.** In **Settings → Slack bot**, click **Match people from indexed repos**. GitHelp links GitHub users
-   to Slack users by commit email first, then full name. Check the matches; the bot only messages people whose link is
-   confirmed, and you can change any of them.
-4. **Turn on overdue alerts.** In **Settings → Overdue alerts**, switch on the repository. It shows exactly who would be
-   messaged before anything is sent. While GitHelp is running it checks every 15 minutes, messages the assignee of
-   each late issue once, and reminds them once after 3 days without a reply.
-
-When someone replies to the bot, it also asks when they expect to finish ("Friday", "Oct 9" and "in 3 days" all work).
-Their reason and date appear on the repository's **Overview**, on the **Attention** page and in the digest; if the date
-passes with the issue still open, the bot asks once for an update.
-
-To have the bot post a summary of what's late to the linked channel, pick **Daily** or **Weekly** in **Settings → Slack
-digest**. Invite the bot to that channel first: type `/invite @GitHelp` in it. Press **⌘J**
-(Ctrl+J on Windows and Linux) or click **Ask a question** to ask about the repository; answers cite their sources.
+Everything else is in **Help** in the app's sidebar, which you can search.
 
 ## Running it all the time, for your team
 
@@ -254,7 +238,6 @@ matches it are sent to that provider.
 npm test                 # unit tests (node --test, no framework)
 npm run build && npm start   # the production server on http://localhost:5173 (stop npm run dev first)
 npx vite build           # check that the frontend compiles
-node eval/rag-eval.js    # answer-quality check against a running dev server and the demo data
 ```
 
 | File | What it does |

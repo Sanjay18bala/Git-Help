@@ -645,3 +645,15 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; backg
 .page-body > h1 + .lead-line { margin-top: 12px; }
 .ledger-why .eta { margin: 4px 0 0; font-size: 13px; }
 .ledger-why .eta:not(.late-text) { color: var(--fg); }
+
+/* ---------- help ---------- */
+.help { max-width: 760px; }
+.help input[type="search"] { margin: 20px 0 8px; }
+.help-section { margin-top: 32px; }
+.help-section h2 { margin: 0; padding-bottom: 10px; border-bottom: 1px solid var(--fg); font-size: 15px; font-weight: 600; }
+.help details { border-bottom: 1px solid var(--border); }
+.help summary { padding: 12px 0; cursor: pointer; font-weight: 500; list-style: none; display: flex; justify-content: space-between; gap: 16px; }
+.help summary::-webkit-details-marker { display: none; }
+.help summary::after { content: '+'; color: var(--muted); font: 16px var(--mono); }
+.help details[open] summary::after { content: '\2212'; }
+.help details p { margin: 0 0 14px; max-width: 68ch; color: var(--fg); line-height: 1.6; }
