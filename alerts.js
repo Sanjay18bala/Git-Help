@@ -47,13 +47,13 @@ export function planAlerts(today = localDate(), now = Date.now()) {
     for (const i of overdue) {
       const base = { repo, number: i.number, title: i.title, url: i.url, milestone: i.milestone, due_on: i.due_on, days_late: daysLate(i.due_on, today) };
       if (!i.assignees) {
-        cannot.push({ ...base, login: null, reason: 'nobody is assigned' });
+        cannot.push({ ...base, login: null, reason: 'unassigned' });
         continue;
       }
       for (const login of i.assignees.split(', ')) {
         const slackUser = slackUserFor(login);
         if (!slackUser) {
-          cannot.push({ ...base, login, reason: 'no confirmed Slack link (Settings → slack bot)' });
+          cannot.push({ ...base, login, reason: 'no confirmed Slack match (Settings → Slack bot)' });
           continue;
         }
         const eta = latestEta(repo, i.number);
@@ -82,14 +82,14 @@ export function alertText(a) {
   const link = `<${a.url}|#${a.number} ${a.title.replace(/[<>|]/g, '')}>`;
   const late = `${a.days_late} day${a.days_late === 1 ? '' : 's'} ago`;
   if (a.kind === 'eta') {
-    return `${link} in ${a.repo} was expected by ${dayLong(a.eta)} and is still open. Any update? When do you now expect to finish it?`;
+    return `${link} in ${a.repo} was expected by ${dayLong(a.eta)} and remains open. Could you share an update and a revised completion date?`;
   }
   return a.kind === 'reminder'
-    ? `Quick reminder: ${link} in ${a.repo} is still open (due ${dayLabel(a.due_on)}, ${late}). What's holding it up? `
-      + 'Reply in this thread and I\'ll pass it on when someone asks.'
-    : `Hi! ${link} in ${a.repo} was due ${dayLabel(a.due_on)} (milestone ${a.milestone}, ${late}) and is still open. `
-      + 'What\'s holding it up? Reply in this thread and I\'ll pass it on when someone asks. '
-      + 'If the date is wrong, update the milestone on GitHub.';
+    ? `A gentle reminder: ${link} in ${a.repo} remains open (due ${dayLabel(a.due_on)}, ${late}). Could you share what is holding it up? `
+      + 'A brief reply in this thread is all that is needed.'
+    : `Hello. ${link} in ${a.repo} was due ${dayLabel(a.due_on)} (milestone ${a.milestone}, ${late}) and remains open. `
+      + 'Could you share what is holding it up? A brief reply in this thread is all that is needed. '
+      + 'If the due date is no longer right, please update the milestone on GitHub.';
 }
 
 // ---------- sending ----------
@@ -142,20 +142,20 @@ export async function recordReply(event) {
     saveReason();
     if (date && date >= today) {
       saveEta(date);
-      reply = `Thanks, noted for ${n}, expected by ${dayLong(date)}. I'll share it when someone asks why it's late.`;
+      reply = `Thank you, noted for ${n}, with completion expected by ${dayLong(date)}. I'll share this with anyone who asks about its status.`;
     } else {
-      reply = `Thanks, noted for ${n}. When do you expect to finish it? A day or a date is fine, like Friday or Oct 9.`;
+      reply = `Thank you, noted for ${n}. When do you expect to complete it? A day or a date is fine, such as Friday or Oct 9.`;
     }
   } else if (date && date >= today) {
     saveEta(date);
-    reply = `Got it: ${n} by ${dayLong(date)}. I'll check in if it's still open after that.`;
+    reply = `Understood: ${n} by ${dayLong(date)}. I'll follow up if it remains open after that.`;
   } else if (date) {
-    reply = `${dayLong(date)} has already passed. When do you expect to finish ${n}?`;
+    reply = `${dayLong(date)} has already passed. When do you now expect to complete ${n}?`;
   } else if (!hasEta) {
-    reply = `I couldn't find a date in that. When do you expect to finish ${n}? For example Friday, Oct 9, or in 3 days.`;
+    reply = `I couldn't find a date in that reply. When do you expect to complete ${n}? For example: Friday, Oct 9, or in 3 days.`;
   } else {
     saveReason();
-    reply = `Thanks, noted for ${n}.`;
+    reply = `Thank you, noted for ${n}.`;
   }
   await bot('chat.postMessage', { channel: event.channel, thread_ts: event.thread_ts ?? event.ts, text: reply });
   await indexFollowups(alert.repo).catch(() => {}); // searchable now; re-indexing also picks it up later
@@ -251,10 +251,10 @@ export function digestText(repo, att, { schedule = 'weekly' } = {}) {
     : `*${esc(name)}* · nothing is past due`);
   for (const i of late.slice(0, 10)) {
     const who = i.assignees.join(', ');
-    const expect = !i.eta ? '' : i.eta.days_past > 0 ? ` · missed ${eventDay(`${i.eta.date}T12:00:00`)}` : ` · expects ${eventDay(`${i.eta.date}T12:00:00`)}`;
+    const expect = !i.eta ? '' : i.eta.days_past > 0 ? ` · was expected ${eventDay(`${i.eta.date}T12:00:00`)}` : ` · expected ${eventDay(`${i.eta.date}T12:00:00`)}`;
     const why = i.reason ? `${esc(i.reason.github_login)}: “${esc(clip(i.reason.text.replace(/\s+/g, ' '), 140))}”${expect}`
-      : !who ? 'no owner'
-        : i.alerted_at ? `${esc(who)} · asked ${eventDay(i.alerted_at)}, no reply` : `${esc(who)} · not asked yet`;
+      : !who ? 'unassigned'
+        : i.alerted_at ? `${esc(who)} · asked ${eventDay(i.alerted_at)}, awaiting reply` : `${esc(who)} · not yet asked`;
     lines.push(`• <${i.url}|#${i.number} ${esc(i.title)}> · ${plural(i.days_late, 'day')} late · ${why}`);
   }
   if (late.length > 10) lines.push(`…and ${late.length - 10} more`);
@@ -285,7 +285,7 @@ export async function sendDigest(repo, { period = null, schedule = 'weekly' } = 
       results.push({ channel: c.name, ok: true });
     } catch (e) {
       results.push({ channel: c.name, ok: false,
-        error: e.message === 'not_in_channel' ? `Add the GitHelp bot to #${c.name} first: type /invite @GitHelp in that channel.` : e.message });
+        error: e.message === 'not_in_channel' ? `Invite the GitHelp bot to #${c.name} first by typing /invite @GitHelp in that channel.` : e.message });
     }
   }
   return results;

@@ -108,7 +108,7 @@ async function gh(token, path, accept = 'application/vnd.github+json') {
     headers: { Authorization: `Bearer ${token}`, Accept: accept, 'X-GitHub-Api-Version': '2022-11-28' },
   });
   if (r.status === 404) return null;
-  if (r.status === 401) throw new RagError('GitHub session expired. Sign in again.');
+  if (r.status === 401) throw new RagError('Your GitHub session has expired. Please sign in again.');
   if (!r.ok) throw new RagError(`GitHub returned ${r.status} for ${path}`);
   return accept.includes('raw') ? r.text() : r.json();
 }
@@ -319,7 +319,7 @@ export async function ensureIndexed(repo, token, onStatus = () => {}) {
     await indexGithub(r, token);
   }
   if (d.prepare('SELECT 1 FROM chunks WHERE embedding IS NULL OR model IS NOT ?').get(embedModel())) {
-    onStatus('Embedding new content…');
+    onStatus('Updating the search index…');
     await serial(embedPending);
   }
 }

@@ -87,7 +87,7 @@ async function request(url, init, label, hint = '') {
     res = await fetch(url, init);
   } catch (e) {
     if (e.name === 'AbortError') throw e;
-    throw new LlmError(`Can't reach ${label} at ${new URL(url).origin}.${label === 'Ollama' ? ' Is it running? Start it with `ollama serve`.' : ''}`);
+    throw new LlmError(`Unable to reach ${label} at ${new URL(url).origin}.${label === 'Ollama' ? ' Make sure it is running; start it with `ollama serve`.' : ''}`);
   }
   if (res.ok) return res;
   const body = await res.text();
@@ -187,16 +187,16 @@ const openai = {
 const CURRENT_CLAUDE = new Set(['claude-fable-5-1', 'claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5-5']);
 
 function anthropicClient(s) {
-  if (!s.anthropic.key) throw new LlmError('Add an Anthropic API key in Settings, or ANTHROPIC_API_KEY in .env.');
+  if (!s.anthropic.key) throw new LlmError('Add an Anthropic API key in Settings, or set ANTHROPIC_API_KEY in .env.');
   return new Anthropic({ apiKey: s.anthropic.key });
 }
 
 function anthropicError(e) {
   if (e instanceof Anthropic.APIUserAbortError) return e;
-  if (e instanceof Anthropic.AuthenticationError) return new LlmError('Anthropic rejected the API key. Check it in Settings.');
-  if (e instanceof Anthropic.NotFoundError) return new LlmError("Anthropic doesn't recognise that model. Pick one from the list in Settings.");
-  if (e instanceof Anthropic.RateLimitError) return new LlmError('Anthropic rate limit reached. Try again in a moment.');
-  if (e instanceof Anthropic.APIConnectionError) return new LlmError("Can't reach the Anthropic API. Check your connection.");
+  if (e instanceof Anthropic.AuthenticationError) return new LlmError('Anthropic rejected the API key. Please verify it in Settings.');
+  if (e instanceof Anthropic.NotFoundError) return new LlmError('Anthropic does not recognise that model. Choose one from the list in Settings.');
+  if (e instanceof Anthropic.RateLimitError) return new LlmError('Anthropic rate limit reached. Please try again shortly.');
+  if (e instanceof Anthropic.APIConnectionError) return new LlmError('Unable to reach the Anthropic API. Please check your connection.');
   if (e instanceof Anthropic.APIError) return new LlmError(`Anthropic error ${e.status ?? ''}: ${e.message}`);
   return e;
 }

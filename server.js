@@ -339,7 +339,7 @@ api.post('/chat', async (req, res) => {
     if (ac.signal.aborted) return res.end();
     const known = e instanceof llm.LlmError || e instanceof rag.RagError || e instanceof slack.SlackError;
     if (!known) console.error(e);
-    send({ type: 'error', message: e instanceof slack.SlackError ? slack.friendly(e.message) : known ? e.message : 'Something went wrong. Check the terminal running npm run dev.' });
+    send({ type: 'error', message: e instanceof slack.SlackError ? slack.friendly(e.message) : known ? e.message : 'An unexpected error occurred. Details are in the server log.' });
   }
   res.end();
 });
@@ -349,7 +349,7 @@ const errors = (err, req, res, next) => { // the 4-argument signature is what ma
   if (err instanceof slack.SlackError) return res.status(502).json({ message: slack.friendly(err.message) });
   if (err instanceof llm.LlmError || err instanceof rag.RagError) return res.status(502).json({ message: err.message });
   console.error(err);
-  res.status(500).json({ message: 'Something went wrong. Check the terminal running npm run dev.' });
+  res.status(500).json({ message: 'An unexpected error occurred. Details are in the server log.' });
 };
 slackApi.use(errors);
 api.use(errors);

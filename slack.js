@@ -10,13 +10,13 @@ const OVERLAP_DAYS = 7; // every sync re-reads this much, to pick up edits and l
 export class SlackError extends Error {}
 
 const FRIENDLY = {
-  not_configured: "Slack isn't set up: add SLACK_USER_TOKEN to .env (see README).",
-  bot_not_configured: "The Slack bot isn't set up: add SLACK_BOT_TOKEN to .env (see README).",
+  not_configured: 'Slack is not configured. Add SLACK_USER_TOKEN to .env as described in the README.',
+  bot_not_configured: 'The Slack bot is not configured. Add SLACK_BOT_TOKEN to .env as described in the README.',
   not_authed: 'The Slack token in .env is missing or malformed.',
-  invalid_auth: 'The Slack token in .env is invalid. Copy the User OAuth Token again.',
-  token_revoked: 'The Slack token in .env was revoked. Reinstall the Slack app and copy the new token.',
-  missing_scope: 'The Slack app is missing a permission. Compare its scopes with the manifest in the README.',
-  channel_not_found: "Channel not found, or you're not a member of it.",
+  invalid_auth: 'The Slack token in .env is invalid. Please copy the User OAuth Token again.',
+  token_revoked: 'The Slack token in .env has been revoked. Reinstall the Slack app and copy the new token.',
+  missing_scope: 'The Slack app lacks a required permission. Compare its scopes with the manifest in the README.',
+  channel_not_found: 'Channel not found, or you are not a member of it.',
 };
 export const friendly = (code) => FRIENDLY[code] ?? `Slack error: ${code}`;
 

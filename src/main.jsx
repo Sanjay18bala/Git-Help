@@ -238,9 +238,9 @@ class ErrorBoundary extends Component {
     if (!this.state.error) return this.props.children;
     return (
       <div className="alert" role="alert">
-        <span className="alert-label">Something went wrong on this page</span>
+        <span className="alert-label">This page could not be displayed</span>
         {this.state.error.message}
-        <button className="btn btn-ghost btn-sm" onClick={() => window.location.reload()}>reload page</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => window.location.reload()}>Reload page</button>
       </div>
     );
   }
@@ -275,7 +275,7 @@ function Toasts() {
   return <div className="toasts" role="status" aria-live="polite">{items.map((t) => <div key={t.id} className="toast">{t.text}</div>)}</div>;
 }
 
-function List({ path, render, keep, accept, empty = 'Nothing here.' }) {
+function List({ path, render, keep, accept, empty = 'Nothing to show.' }) {
   const { data, error, more, busy } = useGitHub(path, accept);
   if (error || !data) return <Status error={error} data={data} />;
   const items = keep ? data.filter(keep) : data;
@@ -376,15 +376,15 @@ function SlackLinkDialog({ repo, onClose }) {
             <h2 className="chat-title">Link a Slack channel</h2>
             <div className="chat-context">{repo}{status?.configured && ` · ${status.team}`}</div>
           </div>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => ref.current.close()}>close</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => ref.current.close()}>Close</button>
         </header>
 
         {status && !status.configured ? (
           <div className="dialog-body">
-            <p>{status.error ?? "Slack isn't connected yet."}</p>
+            <p>{status.error ?? 'Slack is not connected yet.'}</p>
             <p className="muted">
-              Create a Slack app from the manifest in the README, install it to your workspace, put its User OAuth
-              Token in <code>.env</code> as <code>SLACK_USER_TOKEN</code>, then restart <code>npm run dev</code>.
+              Create a Slack app from the manifest in the README and install it to your workspace. Then add its User
+              OAuth Token to <code>.env</code> as <code>SLACK_USER_TOKEN</code> and restart <code>npm run dev</code>.
             </p>
           </div>
         ) : (
@@ -393,7 +393,7 @@ function SlackLinkDialog({ repo, onClose }) {
               onChange={(e) => setQ(e.target.value)} />
             {error && <p className="error" role="alert">{error}</p>}
             {!shown ? <p className="muted">Loading channels…</p>
-              : !shown.length ? <p className="muted">No channels match. You can only link channels you're a member of.</p>
+              : !shown.length ? <p className="muted">No matching channels. Only channels you belong to can be linked.</p>
                 : (
                   <ul className="channel-list">
                     {shown.map((c) => (
@@ -404,7 +404,7 @@ function SlackLinkDialog({ repo, onClose }) {
                           </span>
                           <span className="channel-action">
                             {busy === c.id ? (linked.has(c.id) ? 'Unlinking…' : 'Linking and syncing…')
-                              : linked.has(c.id) ? 'linked · unlink' : 'link'}
+                              : linked.has(c.id) ? 'Linked · Unlink' : 'Link'}
                           </span>
                         </button>
                       </li>
@@ -412,8 +412,8 @@ function SlackLinkDialog({ repo, onClose }) {
                   </ul>
                 )}
             <p className="hint">
-              Linking copies the last 90 days of messages and threads into a local file on this machine
-              (<code>.data/</code>). Unlinking deletes that copy.
+              Linking copies the past 90 days of messages and threads into local storage on this machine
+              (<code>.data/</code>). Unlinking removes that copy.
             </p>
           </div>
         )}
@@ -444,7 +444,7 @@ function SlackTab({ repo }) {
       const { index_error } = await api('/slack/sync', { method: 'POST', body: { repo, full } });
       if (index_error) setError(index_error);
       await reload();
-      toast(full ? 'Resynced from scratch' : 'Synced');
+      toast(full ? 'Full resync complete' : 'Sync complete');
     } catch (e) {
       setError(e.message);
     } finally {
@@ -459,7 +459,7 @@ function SlackTab({ repo }) {
           ...mine.map((l) => [`#${l.name}`, <>{plural(l.messages, 'message')} · synced <Time value={l.synced_at} /></>]),
         ]} />
       ) : (
-        <p className="muted">No Slack channel is linked to this repository yet. Use Link Slack channel at the top to add one.</p>
+        <p className="muted">No Slack channel is linked to this repository yet. Use Link Slack channel above to add one.</p>
       )}
       {mine.length > 0 && (
         <div className="actions">
@@ -478,7 +478,7 @@ function SlackThreads({ threads }) {
     <>
       <h3>Recent conversations</h3>
       {!threads ? <Skeleton />
-        : !threads.length ? <p className="muted">No messages in the last 90 days.</p>
+        : !threads.length ? <p className="muted">No messages in the past 90 days.</p>
           : (
             <ul className="list">
               {threads.map((t) => (
@@ -531,11 +531,11 @@ const SUGGESTIONS = {
   repo: [
     "What's blocking the open pull requests?",
     'What decisions were made recently, and why?',
-    'Who is working on what right now?',
+    'Who is working on what at the moment?',
   ],
   general: [
-    'Which repos have open bugs right now?',
-    'Summarize recent decisions across projects',
+    'Which repositories have open bugs?',
+    'Summarize recent decisions across projects.',
     'What changed in the latest releases?',
   ],
 };
@@ -624,7 +624,7 @@ function ChatPanel({ repo, open, onClose }) {
   const { links } = useContext(SlackContext);
   const { settings } = useContext(LlmContext);
   const linked = repo ? linksFor(links, repo) : links;
-  const slackStatus = !linked.length ? 'slack not linked'
+  const slackStatus = !linked.length ? 'Slack not linked'
     : repo ? `${linked.map((l) => `#${l.name}`).join(', ')} · ${plural(linked.reduce((n, l) => n + l.messages, 0), 'message')}`
       : `${plural(new Set(links.map((l) => l.channel_id)).size, 'channel')} linked`;
   const last = messages.at(-1);
@@ -682,7 +682,7 @@ function ChatPanel({ repo, open, onClose }) {
         <div>
           <div className="chat-title">Ask</div>
           <div className="chat-context">
-            {repo ?? 'all repositories'} · <span className={`dot${linked.length ? ' on' : ''}`} aria-hidden="true" />{slackStatus}
+            {repo ?? 'All repositories'} · <span className={`dot${linked.length ? ' on' : ''}`} aria-hidden="true" />{slackStatus}
           </div>
           {settings && (
             <div className="chat-context">
@@ -706,8 +706,8 @@ function ChatPanel({ repo, open, onClose }) {
             <h2>Ask about {subject}</h2>
             <p>
               {repo
-                ? "Answers come from this repo's issues, pull requests and README, plus its linked Slack channels, with links to every source."
-                : "Answers come from every repo you've chatted about and all linked Slack channels, with links to every source."}
+                ? "Answers draw on this repository's issues, pull requests, reviews and README, along with its linked Slack channels. Every source is cited."
+                : "Answers draw on every indexed repository and all linked Slack channels. Every source is cited."}
             </p>
             <div className="suggestions">
               {SUGGESTIONS[repo ? 'repo' : 'general'].map((s) => (
@@ -721,10 +721,10 @@ function ChatPanel({ repo, open, onClose }) {
           ) : (
             <div key={i} className="msg msg-assistant">
               <span className="msg-author">
-                GitHelp{m.pending && !m.text && <span className="typing"> · {m.status ?? 'searching…'}</span>}
+                GitHelp{m.pending && !m.text && <span className="typing"> · {m.status ?? 'Searching…'}</span>}
               </span>
               {m.text && <AnswerText text={m.text} sources={m.sources} />}
-              {m.stopped && <p className="muted">stopped</p>}
+              {m.stopped && <p className="muted">Stopped.</p>}
               {m.error && <p className="error" role="alert">{m.error}</p>}
               {!m.pending && m.sources?.length > 0 && <SourceList text={m.text} sources={m.sources} />}
             </div>
@@ -774,12 +774,12 @@ function ThemeToggle() {
 
 
 const SIGN_IN_ERRORS = {
-  access_denied: 'You cancelled the request on GitHub. Nothing was shared.',
-  state_mismatch: 'That sign-in link expired. Please try again.',
-  bad_verification_code: 'The sign-in code expired. Please try again.',
-  incorrect_client_credentials: 'The OAuth client ID or secret in .env is wrong. See the README.',
-  redirect_uri_mismatch: 'The OAuth App callback URL must be http://localhost:5173/auth/callback.',
-  not_allowed: "Your GitHub account isn't on this GitHelp's list of allowed users. Ask whoever runs it to add you.",
+  access_denied: 'Sign-in was cancelled on GitHub. No access was granted.',
+  state_mismatch: 'This sign-in link has expired. Please sign in again.',
+  bad_verification_code: 'The sign-in code has expired. Please sign in again.',
+  incorrect_client_credentials: 'The OAuth client ID or secret in .env is incorrect. The README explains where to find both.',
+  redirect_uri_mismatch: `The OAuth App's callback URL must be ${window.location.origin}/auth/callback.`,
+  not_allowed: 'This GitHub account is not on the list of permitted users. Please ask your administrator for access.',
 };
 
 function Home() {
@@ -795,9 +795,9 @@ function Home() {
         <Brand to="/" />
         <h1>Your project already knows why.</h1>
         <p className="lead">
-          GitHelp turns your GitHub history and Slack conversations into one searchable memory. Ask anything about the
-          work and get an answer built from the exact issues, reviews and messages, with a link to each. When the answer
-          was never written down, its Slack bot asks the person who knows.
+          GitHelp turns your repository's history and your team's Slack conversations into a single, searchable memory.
+          Ask anything about the work and receive an answer drawn from the exact issues, reviews and messages, each one
+          cited. Where the answer was never written down, GitHelp asks the person who knows.
         </p>
         {error && (
           <div className="alert" role="alert">
@@ -806,14 +806,14 @@ function Home() {
           </div>
         )}
         <a className="btn btn-primary btn-lg" href="/auth/login"><GitHubMark />Continue with GitHub</a>
-        <p className="hint">Read-only on GitHub. Runs on your own machine.</p>
+        <p className="hint">Read-only access to GitHub. Runs on your own infrastructure.</p>
       </section>
       <LandingDemo />
       <dl className="landing-facts" aria-label="How it works">
-        <div><dt>Indexes everything</dt><dd>Issues, pull requests, reviews, comments, READMEs and linked Slack channels, kept in sync.</dd></div>
-        <div><dt>Searches by meaning</dt><dd>Keyword and semantic search together, so it finds the thread even when nobody used the same words.</dd></div>
-        <div><dt>Shows its sources</dt><dd>Every answer links to the issue, review or message it came from, so you can check it.</dd></div>
-        <div><dt>Private by default</dt><dd>Answers come from a model on your machine. Read-only on GitHub. Nothing is sent anywhere else unless you choose a cloud model.</dd></div>
+        <div><dt>Complete context</dt><dd>Issues, pull requests, code reviews, discussions, READMEs and linked Slack channels, indexed and kept current.</dd></div>
+        <div><dt>Search by meaning</dt><dd>Keyword and semantic retrieval combined, so the right thread surfaces even when it uses different words.</dd></div>
+        <div><dt>Every answer cited</dt><dd>Each claim links to the issue, review or message it rests on, so it can be verified at a glance.</dd></div>
+        <div><dt>Private by design</dt><dd>A local model answers by default and GitHub access is read-only. Nothing leaves your infrastructure unless you choose a hosted model.</dd></div>
       </dl>
     </main>
   );
@@ -822,7 +822,7 @@ function Home() {
 // The core loop on the sign-in page, built from the app's own styles: a late issue, the bot's Slack DM and its
 // reply, then Ask answering with the reason. Advances every few seconds unless the visitor prefers reduced motion
 // or picks a step. The repository, people and issues are made up for illustration.
-const DEMO_STEPS = ['Ask anything', 'Fill the gaps', 'Every morning in Slack'];
+const DEMO_STEPS = ['Ask anything', 'Close the gaps', 'A daily brief in Slack'];
 function LandingDemo() {
   const [step, setStep] = useState(0);
   const [auto, setAuto] = useState(() => !matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -847,22 +847,22 @@ function LandingDemo() {
           <div className="demo-body" key="s0">
             <p className="demo-q">Why did we move checkout to the new payments API?</p>
             <p>
-              The old provider couldn't do partial refunds, which support needs for split orders <span className="cite">[1]</span>.
+              The previous provider could not issue partial refunds, which support requires for split orders <span className="cite">[1]</span>.
               The team agreed in #checkout to migrate during v2.4 <span className="cite">[2]</span>, and the review of #187 kept the
-              old client behind a flag until every store has moved <span className="cite">[3]</span>.
+              legacy client behind a flag until every store has moved over <span className="cite">[3]</span>.
             </p>
             <ol className="demo-sources">
-              <li>Issue #164: Partial refunds for split orders <span className="muted">· GitHub</span></li>
-              <li>Thread in #checkout, Sep 18 <span className="muted">· Slack</span></li>
-              <li>Review of #187: keep the old client behind a flag <span className="muted">· GitHub</span></li>
+              <li>Issue #164 · Partial refunds for split orders <span className="muted">· GitHub</span></li>
+              <li>Discussion in #checkout, Sep 18 <span className="muted">· Slack</span></li>
+              <li>Code review on #187 · Keep the legacy client behind a flag <span className="muted">· GitHub</span></li>
             </ol>
           </div>
         )}
         {step === 1 && (
           <div className="demo-body demo-dm" key="s1">
-            <div className="dm-msg"><b>GitHelp</b><p>Hi! #212 Add rate limiting to the checkout API in acme/storefront was due Oct 2 (milestone v2.4) and is still open. What's holding it up?</p></div>
-            <div className="dm-msg"><b>alex</b><p className="dm-reply">Waiting on the security review. Should be done Friday.</p></div>
-            <div className="dm-msg"><b>GitHelp</b><p>Thanks, noted for #212, expected by Fri, Oct 9. I'll share it when someone asks why it's late.</p></div>
+            <div className="dm-msg"><b>GitHelp</b><p>Hello. #212 Add rate limiting to the checkout API in acme/storefront was due Oct 2 (milestone v2.4) and remains open. Could you share what is holding it up? A brief reply in this thread is all that is needed.</p></div>
+            <div className="dm-msg"><b>alex</b><p className="dm-reply">Waiting on the security review. Should be done by Friday.</p></div>
+            <div className="dm-msg"><b>GitHelp</b><p>Thank you, noted for #212, with completion expected by Fri, Oct 9. I'll share this with anyone who asks about its status.</p></div>
           </div>
         )}
         {step === 2 && (
@@ -870,8 +870,8 @@ function LandingDemo() {
             <div className="dm-msg">
               <b>GitHelp</b>
               <p><strong>storefront</strong> · 2 items past due in v2.4</p>
-              <p>• #212 Add rate limiting to the checkout API · 3 days late · alex: “Waiting on the security review” · expects Oct 9</p>
-              <p>• #198 Fix flaky payment webhook tests · 3 days late · sam · asked Oct 2, no reply</p>
+              <p>• #212 Add rate limiting to the checkout API · 3 days late · alex: “Waiting on the security review” · expected Oct 9</p>
+              <p>• #198 Fix flaky payment webhook tests · 3 days late · sam · asked Oct 2, awaiting reply</p>
               <p>Next up: v2.5 due Oct 20 (in 13 days) · 4 items</p>
             </div>
           </div>
@@ -899,35 +899,35 @@ const HELP = [
     ['How up to date is the Overview?', 'A repository is read from GitHub the first time you open it. After that it is refreshed whenever you ask a question about it and the data is more than 10 minutes old, and every 15 minutes while GitHelp runs for repositories with overdue alerts or a digest turned on.'],
   ]],
   ['The Slack bot', [
-    ['Who does the bot message?', 'The people assigned to an open issue that is past its milestone’s due date, in repositories where Settings → Overdue alerts is on, and only people whose GitHub account is linked to their Slack account and confirmed. It doesn’t message about pull requests or unassigned issues.'],
-    ['How does GitHelp know who is who on Slack?', 'Settings → Slack bot → Match people compares GitHub users with Slack users: first by commit email, then by full name. Those matches are confirmed automatically. Weaker matches (Slack handle, first name only) wait for you to confirm, and you can pick anyone by hand. A choice you make by hand is never overwritten.'],
-    ['What does the bot say, and how often?', 'One message when the issue becomes late, asking what is holding it up. If there is no reply after 3 days, one reminder. Nothing more until the milestone’s date changes. Settings → Overdue alerts shows exactly who would be messaged before anything is sent.'],
-    ['What happens when someone replies?', 'The first reply is kept as the reason. The bot then asks when they expect to finish, and understands answers like Friday, Oct 9, 10/9, tomorrow, in 3 days, end of week or next week. A reply that already names a date counts as both. The reason and date appear on the Overview, the Attention page, the digest and in Ask.'],
-    ['What if the expected date passes?', 'While the date is ahead the bot stays quiet. If it passes and the issue is still open, the bot asks once for an update and a new date.'],
+    ['Who does the bot message?', 'The people assigned to an open issue that is past its milestone’s due date, in repositories where Settings → Overdue alerts is on, and only people whose GitHub account is linked to their Slack account and confirmed. It does not message about pull requests or unassigned issues.'],
+    ['How does GitHelp know who is who on Slack?', 'Settings → Slack bot → Match people compares GitHub users with Slack users: first by commit email, then by full name. Those matches are confirmed automatically. Weaker matches (Slack handle, first name only) await your confirmation, and you can choose anyone manually. A manual choice is never overwritten.'],
+    ['What does the bot say, and how often?', 'One message when the issue becomes late, asking what is holding it up. If there is no reply after three days, a single reminder. Nothing further until the milestone’s date changes. Settings → Overdue alerts shows exactly who would be messaged before anything is sent.'],
+    ['What happens when someone replies?', 'The first reply is kept as the reason. The bot then asks when they expect to finish, and understands answers such as Friday, Oct 9, 10/9, tomorrow, in 3 days, end of week or next week. A reply that already names a date serves as both. The reason and date appear on the Overview, the Attention page, the digest and in Ask.'],
+    ['What if the expected date passes?', 'Until that date the bot stays silent. If it passes and the issue remains open, the bot asks once for an update and a revised date.'],
     ['Do people have to reply in a thread?', 'No. A reply in the bot’s thread belongs to that issue; a message in the direct message without a thread goes to the most recent issue the bot asked about.'],
     ['When does the bot run?', 'Every 15 minutes, but only while GitHelp is running. To keep it running for your team, run GitHelp on an always-on machine (see the README).'],
   ]],
   ['Slack channels and the digest', [
     ['Which Slack channels can I link?', 'Channels you are a member of, public or private. Use Link Slack channel at the top of a repository. You can link several channels to a repository, and one channel to several repositories.'],
-    ['What happens when I link a channel?', 'GitHelp copies the channel’s last 90 days of messages and thread replies to this machine so Ask can answer from them. The Slack tab shows them; Sync now fetches new messages and Full resync reads everything again. Unlinking a channel from its last repository deletes the copy.'],
-    ['What is the digest?', 'A short message the bot posts to a repository’s linked channels: every late item with how late it is and its reason, then what is due next. Choose Daily (weekdays) or Weekly (Mondays) in Settings → Slack digest. It posts at 9:00, once per day or week, and a daily digest skips days with nothing late or due soon. Preview shows the exact message and Post now sends it straight away.'],
+    ['What happens when I link a channel?', 'GitHelp copies the channel’s last 90 days of messages and thread replies to this machine so Ask can answer from them. The Slack tab shows them: Sync now fetches new messages, and Full resync reads everything again. Unlinking a channel from its last repository deletes the copy.'],
+    ['What is the digest?', 'A concise message the bot posts to a repository’s linked channels: every late item with how late it is and its reason, then what is due next. Choose Daily (weekdays) or Weekly (Mondays) in Settings → Slack digest. It posts at 9:00, once per day or week, and a daily digest skips days with nothing late or due soon. Preview shows the exact message, and Post now sends it immediately.'],
     ['The digest says the bot isn’t in the channel', 'The bot can only post in channels it has been added to. Type /invite @GitHelp in the channel, then try again.'],
   ]],
   ['Ask', [
     ['What can Ask answer?', 'Questions about the work: why something is late, when it will be done, what was decided and why, who is working on what, what is blocking a release, how many issues are open. Inside a repository it uses that repository’s issues, pull requests, reviews, comments, README, linked Slack channels and replies to the bot. On the other pages it uses everything indexed so far. Every answer links its sources.'],
     ['How do I open Ask?', 'Click Ask a question in the sidebar or press ⌘J (Ctrl+J on Windows and Linux). Press / anywhere outside a text field to jump to it. Buttons like Ask why it’s late ask for you.'],
     ['Which model answers, and where does my data go?', 'By default a model running on this machine through Ollama, so nothing leaves it. In Settings you can choose Anthropic or any OpenAI-compatible service instead; then each question and the GitHub and Slack text that matches it are sent to that service.'],
-    ['An answer is wrong or vague', 'Check the cited sources: answers come only from them. Small local models make mistakes; a larger model (Settings → Chat model) gives better answers if your machine has the memory.'],
+    ['An answer is wrong or vague', 'Check the cited sources: answers come only from them. Small local models can make mistakes; a larger model (Settings → Chat model) gives better answers if your machine has the memory for it.'],
   ]],
   ['Using the app', [
     ['Keyboard shortcuts', '⌘K (Ctrl+K) opens search: type a repository, a page, part of an issue title, or an issue number to jump straight to it. ⌘J (Ctrl+J) opens or closes Ask. / jumps to Ask.'],
-    ['How do I change the theme?', 'Settings → Appearance: Light, Graphite or Slate. It applies straight away and is remembered in this browser.'],
+    ['How do I change the theme?', 'Settings → Appearance: Light, Graphite or Slate. It takes effect immediately and is remembered in this browser.'],
     ['What is on an issue or pull request page?', 'The description, a timeline of comments, reviews, commits, labels and references, and a sidebar with assignees, labels, the milestone and linked items. Pull requests also show their changed files as a diff with review comments in place, and late issues show the owner’s reason.'],
   ]],
   ['Privacy and access', [
     ['Where is my data kept?', 'On the machine running GitHelp, in its .data folder: linked Slack channels, replies to the bot, settings and the search index. Nothing is sent anywhere except GitHub, Slack and the model service you chose.'],
-    ['How are my tokens kept?', 'Your GitHub sign-in is in an encrypted cookie the page itself can’t read. So that overdue checks can run with no browser open, an encrypted copy is also stored; signing out deletes it. API keys entered in Settings are stored encrypted and never sent back to the browser.'],
-    ['Who can sign in?', 'On your own computer, you. When GitHelp runs on a server, only the GitHub accounts listed in ALLOWED_GITHUB_USERS, because anyone signed in can read the linked Slack channels.'],
+    ['How are my tokens kept?', 'Your GitHub sign-in is held in an encrypted cookie that the page itself cannot read. So that overdue checks can run without a browser open, an encrypted copy is also stored; signing out deletes it. API keys entered in Settings are stored encrypted and never sent back to the browser.'],
+    ['Who can sign in?', 'On your own computer, only you. When GitHelp runs on a server, only the GitHub accounts listed in ALLOWED_GITHUB_USERS, because anyone signed in can read the linked Slack channels.'],
     ['How do I revoke access?', 'For GitHub, at github.com/settings/applications. For Slack, from your Slack app’s settings page. Signing out of GitHelp ends your session and deletes its stored copy of your GitHub access.'],
   ]],
 ];
@@ -1010,7 +1010,7 @@ function QuickSearch({ repo, onClose }) {
 
   return (
     <dialog ref={ref} className="dialog palette" onClose={onClose} onClick={(e) => e.target === ref.current && onClose()} aria-label="Quick search">
-      <input type="search" autoFocus placeholder={repo ? `Search ${repo.split('/')[1]}, repos and pages. Type a number to jump to it.` : 'Search repos and pages…'}
+      <input type="search" autoFocus placeholder={repo ? `Search ${repo.split('/')[1]}, repositories and pages, or type a number to open it` : 'Search repositories and pages…'}
         value={q} onChange={(e) => { setQ(e.target.value); setSel(0); }} onKeyDown={onKey}
         role="combobox" aria-expanded="true" aria-controls="palette-results" aria-activedescendant={results[active] ? `pr-${results[active].key}` : undefined} />
       <ul id="palette-results" role="listbox" className="palette-results">
@@ -1022,7 +1022,7 @@ function QuickSearch({ repo, onClose }) {
             </li>
           </Fragment>
         ))}
-        {!results.length && <li className="palette-empty">{repos.data ? 'No matches' : 'Loading…'}</li>}
+        {!results.length && <li className="palette-empty">{repos.data ? 'No results' : 'Loading…'}</li>}
       </ul>
       <p className="palette-foot"><kbd>↑</kbd><kbd>↓</kbd> move · <kbd>↵</kbd> open · <kbd>esc</kbd> close</p>
     </dialog>
@@ -1152,8 +1152,8 @@ const Setting = ({ title, desc, children }) => (
 const shortTime = (iso) => new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 function KeyField({ label, id, state, value, cleared, onChange, onClear }) {
-  const hint = cleared ? 'Will be removed when you save' : state === 'saved' ? 'Saved. Leave blank to keep it'
-    : state === 'env' ? 'Set in .env. Enter one to override' : 'Not set';
+  const hint = cleared ? 'Will be removed when you save.' : state === 'saved' ? 'Saved. Leave blank to keep the current key.'
+    : state === 'env' ? 'Set in .env. Enter a key to override it.' : 'Not set.';
   return (
     <div className="field">
       <label htmlFor={id}>{label}</label>
@@ -1177,7 +1177,7 @@ function ModelField({ id, label, value, options, onChange, hint }) {
   );
 }
 
-const MATCH_LABEL = { email: 'Matched by email', name: 'Matched by name', handle: 'Matched by handle', 'first-name': 'First name only', manual: 'Set by you' };
+const MATCH_LABEL = { email: 'Matched by email', name: 'Matched by name', handle: 'Matched by handle', 'first-name': 'Matched by first name only', manual: 'Set manually' };
 
 // Who the bot may message: GitHub logins linked to Slack users. Uncertain matches wait for a confirm.
 function BotSettings() {
@@ -1207,8 +1207,8 @@ function BotSettings() {
   if (!status.configured) {
     return (
       <p className="muted">
-        {status.error ?? "The Slack bot isn't set up."} Add the bot scopes from the README manifest, reinstall the app, and put
-        {' '}<code>SLACK_BOT_TOKEN</code> and <code>SLACK_APP_TOKEN</code> in <code>.env</code>.
+        {status.error ?? 'The Slack bot is not set up.'} Add the bot scopes from the README manifest, reinstall the app, then
+        set{' '}<code>SLACK_BOT_TOKEN</code> and <code>SLACK_APP_TOKEN</code> in <code>.env</code>.
       </p>
     );
   }
@@ -1220,7 +1220,7 @@ function BotSettings() {
       {error && <p className="error" role="alert">{error}</p>}
       {!data ? <p className="muted">Loading people…</p> : (
         <ul className="list people">
-          {data.people.length === 0 && <li className="muted">No people yet: match them from your indexed repos.</li>}
+          {data.people.length === 0 && <li className="muted">No people yet. Use Match people to pair GitHub accounts with Slack members.</li>}
           {data.people.map((p) => (
             <li key={p.github_login} className="person">
               <span className="person-login">{p.github_login}</span>
@@ -1240,7 +1240,7 @@ function BotSettings() {
         </ul>
       )}
       <div>
-        <button type="button" className="btn" disabled={busy} onClick={() => run(async () => { const r = await api('/people/match', { method: 'POST' }); toast('People matched'); return r; })}>
+        <button type="button" className="btn" disabled={busy} onClick={() => run(async () => { const r = await api('/people/match', { method: 'POST' }); toast('Matching complete'); return r; })}>
           {busy ? 'Matching…' : 'Match people'}
         </button>
       </div>
@@ -1273,14 +1273,14 @@ function RepoAlerts({ repo }) {
         <>
           <p className="muted">
             {data.send.length
-              ? `Would message now: ${data.send.map((a) => `${a.login} about #${a.number} (${plural(a.days_late, 'day')} late${a.kind === 'reminder' ? ', reminder' : ''})`).join('; ')}.`
-              : 'Nobody to message right now.'}
+              ? `Ready to message: ${data.send.map((a) => `${a.login} about #${a.number} (${plural(a.days_late, 'day')} late${a.kind === 'reminder' ? ', reminder' : ''})`).join('; ')}.`
+              : 'No one needs a message at the moment.'}
           </p>
           {data.cannot.length > 0 && (
-            <p className="muted">Can't notify: {data.cannot.map((c) => `#${c.number} ${c.login ?? ''} (${c.reason})`).join('; ')}.</p>
+            <p className="muted">Cannot notify: {data.cannot.map((c) => `#${c.number} ${c.login ?? ''} (${c.reason})`).join('; ')}.</p>
           )}
           {data.send.length > 0 && (
-            <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => act(async () => { const { sent } = await api('/alerts/send', { method: 'POST', body: { repo } }); toast(sent.length ? `Sent ${plural(sent.length, 'DM')}` : 'Nothing new to send'); })}>
+            <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => act(async () => { const { sent } = await api('/alerts/send', { method: 'POST', body: { repo } }); toast(sent.length ? `Sent ${plural(sent.length, 'message')}` : 'Nothing new to send'); })}>
               {busy ? 'Sending…' : 'Send now'}
             </button>
           )}
@@ -1289,7 +1289,7 @@ function RepoAlerts({ repo }) {
               {data.log.map((a) => (
                 <li key={a.id}>
                   <span className="muted">{shortTime(a.sent_at)} · {a.kind === 'reminder' ? 'Reminded' : 'Asked'} {a.github_login} about #{a.number}</span>
-                  {a.reply ? <p className="slack-text">“{a.reply}”</p> : <span className="muted"> · No reply yet</span>}
+                  {a.reply ? <p className="slack-text">“{a.reply}”</p> : <span className="muted"> · Awaiting reply</span>}
                 </li>
               ))}
             </ul>
@@ -1336,7 +1336,7 @@ function RepoDigest({ repo }) {
             const r = await api('/digest/send', { method: 'POST', body: { repo } });
             setResults(r.results);
             const ok = r.results.filter((x) => x.ok).map((x) => `#${x.channel}`);
-            toast(ok.length ? `Posted to ${ok.join(', ')}` : 'Nothing was posted');
+            toast(ok.length ? `Posted to ${ok.join(', ')}` : 'Nothing to post');
           })}>
           {busy ? 'Posting…' : 'Post now'}
         </button>
@@ -1362,7 +1362,7 @@ const useLinkedRepos = () => {
   const { links } = useContext(SlackContext);
   return [...new Set(links.map((l) => l.repo))].sort();
 };
-const NO_LINKED = 'No repository is linked to a Slack channel yet. Open a repository and use Link Slack channel.';
+const NO_LINKED = 'No repository is linked to a Slack channel yet. Open a repository and choose Link Slack channel.';
 
 function DigestSettings() {
   const repos = useLinkedRepos();
@@ -1405,7 +1405,7 @@ function SettingsPage() {
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
   const setProvider = (kind, provider) => set({ [kind]: { provider, model: settings.defaults[kind][provider] ?? '' } });
   const modelList = (provider) => (Array.isArray(models[provider]) ? models[provider] : undefined);
-  const listHint = (provider) => (typeof models[provider] === 'string' ? `Couldn't list models: ${models[provider]}` : null);
+  const listHint = (provider) => (typeof models[provider] === 'string' ? `Could not list models: ${models[provider]}` : null);
   const cloud = [form.chat.provider, form.embed.provider].filter((p) => p !== 'ollama');
 
   const save = async (andTest) => {
@@ -1430,12 +1430,12 @@ function SettingsPage() {
     <div className="settings">
       <h1>Settings</h1>
 
-      <Setting title="Appearance" desc="Applies right away and is remembered on this browser.">
+      <Setting title="Appearance" desc="Takes effect immediately and is remembered in this browser.">
         <ThemeToggle />
       </Setting>
 
       <form onSubmit={(e) => { e.preventDefault(); save(false); }}>
-        <Setting title="Chat model" desc="Answers questions in Ask.">
+        <Setting title="Chat model" desc="Composes the answers in Ask.">
           <div className="field-pair">
             <div className="field">
               <label htmlFor="chat-provider">Provider</label>
@@ -1448,7 +1448,7 @@ function SettingsPage() {
           </div>
         </Setting>
 
-        <Setting title="Embedding model" desc="Indexes issues and Slack for search. Changing it re-indexes on the next question.">
+        <Setting title="Embedding model" desc="Powers semantic search across GitHub and Slack. Changing it rebuilds the index on the next question.">
           <div className="field-pair">
             <div className="field">
               <label htmlFor="embed-provider">Provider</label>
@@ -1461,7 +1461,7 @@ function SettingsPage() {
           </div>
         </Setting>
 
-        <Setting title="Connections" desc="Where the models run. Keys are encrypted on this machine and never sent back to the browser.">
+        <Setting title="Connections" desc="Where the models run. Keys are encrypted at rest on this machine and never returned to the browser.">
           <div className="field">
             <label htmlFor="ollama-url">Ollama URL</label>
             <input id="ollama-url" type="url" value={form.ollamaUrl} onChange={(e) => set({ ollamaUrl: e.target.value })} />
@@ -1478,12 +1478,12 @@ function SettingsPage() {
               cleared={form.clear.openai} onChange={(v) => set({ openaiKey: v })}
               onClear={() => set({ clear: { ...form.clear, openai: true } })} />
           </div>
-          <p className="hint">Works with OpenAI, Groq, OpenRouter, Together, LM Studio and vLLM.</p>
+          <p className="hint">Compatible with OpenAI, Groq, OpenRouter, Together, LM Studio and vLLM.</p>
 
           {cloud.length > 0 && (
             <p className="alert" role="note">
               <span className="alert-label">Privacy</span>
-              Questions, and the Slack messages and GitHub text that match them, will be sent to {[...new Set(cloud)].map((p) => PROVIDER_NAMES[p]).join(' and ')}.
+              Questions, together with the Slack messages and GitHub content relevant to them, will be sent to {[...new Set(cloud)].map((p) => PROVIDER_NAMES[p]).join(' and ')}.
             </p>
           )}
           <div className="setting-actions">
@@ -1493,22 +1493,22 @@ function SettingsPage() {
           {notice && <p className={notice.ok ? 'muted' : 'error'} role="status">{notice.text}</p>}
           {test && (
             <ul className="test-results">
-              <li className={test.chat.ok ? '' : 'error'}><b>Chat</b> {test.chat.ok ? 'works' : 'failed'}: {test.chat.detail}</li>
-              <li className={test.embed.ok ? '' : 'error'}><b>Embeddings</b> {test.embed.ok ? 'work' : 'failed'}: {test.embed.detail}</li>
+              <li className={test.chat.ok ? '' : 'error'}><b>Chat</b> {test.chat.ok ? 'working' : 'failed'}: {test.chat.detail}</li>
+              <li className={test.embed.ok ? '' : 'error'}><b>Embeddings</b> {test.embed.ok ? 'working' : 'failed'}: {test.embed.detail}</li>
             </ul>
           )}
         </Setting>
       </form>
 
-      <Setting title="Slack bot" desc="Who the bot may message about late work. Only confirmed links get messages. Changes save immediately.">
+      <Setting title="Slack bot" desc="Who the bot may contact about late work. Only confirmed matches receive messages. Changes are saved immediately.">
         <BotSettings />
       </Setting>
 
-      <Setting title="Slack digest" desc="A short summary of what's late and why, posted by the bot to each repository's linked Slack channels at 9:00. It posts only while GitHelp is running.">
+      <Setting title="Slack digest" desc="A concise summary of what is late and why, posted to each repository's linked Slack channels at 9:00. Digests are sent only while GitHelp is running.">
         <DigestSettings />
       </Setting>
 
-      <Setting title="Overdue alerts" desc="When an issue passes its milestone date, the bot asks its assignee why, reminds them once after 3 days, and records the reply. Checks run every 15 minutes.">
+      <Setting title="Overdue alerts" desc="When an issue passes its milestone date, the bot asks the assignee why, sends one reminder after three days and records the reply. Checks run every 15 minutes.">
         <AlertSettings />
       </Setting>
     </div>
@@ -1531,8 +1531,8 @@ function Repos() {
     <>
       <h1>Repositories</h1>
       <p className="kicker">
-        {data.length} loaded · recently updated first
-        {late > 0 && <> · <span className="late-text">{plural(late, 'overdue item')} in {plural(lateRepos, 'repo')}</span></>}
+        {data.length} loaded · most recently updated first
+        {late > 0 && <> · <span className="late-text">{plural(late, 'overdue item')} in {plural(lateRepos, 'repository', 'repositories')}</span></>}
       </p>
       <input type="search" placeholder="Filter repositories…" aria-label="Filter repositories"
         value={q} onChange={(e) => setQ(e.target.value)} />
@@ -1588,7 +1588,7 @@ const cap = (t) => t[0].toUpperCase() + t.slice(1);
 function leadSentence({ counts, overdue, due_soon: soon }, head = null) {
   if (!counts.overdue) {
     return soon.length ? `Nothing is past due. ${cap(plural(soon.length, 'item is', 'items are'))} due in the next two weeks.`
-      : 'Nothing is past due, and nothing is due in the next two weeks.';
+      : 'Nothing is past due, and nothing falls due in the next two weeks.';
   }
   const milestones = [...new Set(overdue.map((i) => i.milestone))];
   head ??= `${plural(counts.overdue, 'item', 'items')}${milestones.length === 1 ? ` in ${milestones[0]}` : ''} ${counts.overdue === 1 ? 'is' : 'are'} past due.`;
@@ -1597,8 +1597,8 @@ function leadSentence({ counts, overdue, due_soon: soon }, head = null) {
   const unowned = overdue.filter((i) => !i.reason && !i.assignees.length).length;
   const parts = [
     reasoned && `${word(reasoned)} ${reasoned === 1 ? 'has a reason' : 'have reasons'} from ${reasoned === 1 ? 'its owner' : 'their owners'}`,
-    waiting && `${word(waiting)} ${waiting === 1 ? 'is' : 'are'} waiting on a reply`,
-    unowned && `${word(unowned)} ${unowned === 1 ? 'has' : 'have'} no owner`,
+    waiting && `${word(waiting)} ${waiting === 1 ? 'is' : 'are'} awaiting a reply`,
+    unowned && `${word(unowned)} ${unowned === 1 ? 'is' : 'are'} unassigned`,
   ].filter(Boolean);
   const tail = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0];
   return `${head} ${cap(tail)}.`;
@@ -1664,16 +1664,16 @@ function LateLedger({ repo, items, title, note }) {
             {i.reason && <Reason r={i.reason} />}
             {i.eta && (
               <p className={`eta${i.eta.days_past > 0 ? ' late-text' : ''}`}>
-                {i.eta.days_past > 0 ? `Expected ${dayWeek(i.eta.date)} · ${plural(i.eta.days_past, 'day')} past that`
-                  : i.eta.days_past === 0 ? 'Expects to finish today' : `Expects to finish ${dayWeek(i.eta.date)}`}
+                {i.eta.days_past > 0 ? `Was expected ${dayWeek(i.eta.date)} · ${plural(i.eta.days_past, 'day')} overdue`
+                  : i.eta.days_past === 0 ? 'Expected to finish today' : `Expected to finish ${dayWeek(i.eta.date)}`}
               </p>
             )}
             {!i.reason && (
               <>
                 <p className="muted">
-                  {!i.assignees.length ? 'No owner, so nobody has been asked.'
-                    : i.alerted_at ? `No reason yet. Asked ${dayMonth(i.alerted_at)}, no reply.`
-                      : 'No reason yet. Nobody has been asked.'}
+                  {!i.assignees.length ? 'Unassigned, so no one has been asked.'
+                    : i.alerted_at ? `No reason yet. Asked ${dayMonth(i.alerted_at)}; awaiting reply.`
+                      : 'No reason yet. No one has been asked.'}
                 </p>
                 <button type="button" className="btn btn-sm" onClick={() => askChat(`Why is #${i.number} late?`)}>
                   {i.assignees.length ? "Ask why it's late" : 'Ask about it'}
@@ -1705,7 +1705,7 @@ function AttentionPage() {
     <>
       <h1>Attention</h1>
       {!data.length ? (
-        <p className="muted">No repositories yet. Open a repository's Overview and it will show up here.</p>
+        <p className="muted">No repositories yet. Open a repository's Overview and it will appear here.</p>
       ) : (
         <>
           <p className="lead-line">{leadSentence({ counts: { overdue: overdue.length }, overdue, due_soon: soon }, head)}</p>
@@ -1751,7 +1751,7 @@ function Attention({ repo }) {
       <MilestoneLine overdue={data.overdue} soon={data.due_soon} />
 
       {data.overdue.length > 0 && (
-        <LateLedger repo={repo} items={data.overdue} title="Past due, and why" note="Reasons come from owners' replies to the Slack bot" />
+        <LateLedger repo={repo} items={data.overdue} title="Past due, and why" note="Reasons are drawn from owners' replies to the Slack bot" />
       )}
 
       {[...bySoon].map(([milestone, items]) => (
@@ -1788,7 +1788,7 @@ function Overview({ base }) {
         {langs && Object.keys(langs).length > 0 && ` · ${Object.keys(langs).join(', ')}`}
       </p>
       <h3>README</h3>
-      {noReadme ? <p className="muted">No README.</p>
+      {noReadme ? <p className="muted">This repository has no README.</p>
         : readme ? <Markdown html={readme} /> : <Skeleton />}
     </>
   );
@@ -1924,7 +1924,7 @@ function Repo() {
           ))}
         </div>
       )}
-      {body ? body() : <p className="error">Unknown tab.</p>}
+      {body ? body() : <p className="error">This tab does not exist.</p>}
     </>
   );
 }
@@ -2111,7 +2111,7 @@ function FileDiff({ file, comments }) {
               )))}
           </tbody>
         </table>
-      ) : <p className="muted diff-none">{file.status === 'renamed' ? 'Renamed without changes.' : 'Binary or too large to show; view it on GitHub.'}</p>)}
+      ) : <p className="muted diff-none">{file.status === 'renamed' ? 'Renamed without changes.' : 'Binary or too large to display. View it on GitHub.'}</p>)}
       {open && comments.filter((c) => !placed.has(c.id)).map((c) => (
         <div key={c.id} className="tl-card diff-outdated">
           <div className="tl-head"><b>{c.user?.login}</b> <span className="badge">outdated</span> <Time value={c.created_at} /></div>
