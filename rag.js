@@ -365,22 +365,6 @@ export async function retrieve(query, repo, k = TOP_K) {
   return rrf(rankings).slice(0, k).map((id) => get.get(id));
 }
 
-export function indexStats(repo) {
-  const d = db();
-  const { sql, params } = scope(repo);
-  const rows = d.prepare(`SELECT c.source, COUNT(*) AS n, SUM(c.model = ?) AS embedded FROM chunks c WHERE ${sql} GROUP BY c.source`)
-    .all(embedModel(), ...params);
-  const count = (source) => rows.find((r) => r.source === source)?.n ?? 0;
-  return {
-    slack: count('slack'),
-    github: count('github'),
-    embedded: rows.reduce((n, r) => n + (r.embedded ?? 0), 0),
-    model: embedModel(),
-    repos: repo ? undefined : d.prepare('SELECT COUNT(*) AS n FROM indexed_repos').get().n,
-    indexed_at: repo ? d.prepare('SELECT indexed_at FROM indexed_repos WHERE repo = ?').get(repo)?.indexed_at ?? null : undefined,
-  };
-}
-
 // ---------- repository overview ----------
 
 // Exact counts and lists of a repo's issues and PRs, given to the model as a source on every question, because
@@ -487,8 +471,6 @@ export function attention(repo, horizonDays = 14, today = localDate()) {
     },
     overdue: overdue.map(shape),
     due_soon: dueSoon.map(shape),
-    review: prs.filter((i) => !i.draft).map(shape),
-    drafts: prs.filter((i) => i.draft).map(shape),
   };
 }
 

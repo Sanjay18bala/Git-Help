@@ -105,8 +105,7 @@ function RowMeta({ item }) {
   );
 }
 const milestoneText = (m) => (m ? `${m.title}${m.due_on ? ` (due ${shortDay(m.due_on.slice(0, 10))})` : ''}` : '');
-const dateTime = (s) => (s ? new Date(s).toLocaleString() : 'never');
-const slackTime = (ts) => new Date(Number(ts) * 1000).toLocaleString();
+const slackIso = (ts) => new Date(Number(ts) * 1000).toISOString();
 
 // Same request within a few seconds (e.g. the tab counts and the Overview both want /attention): share one fetch.
 const apiCache = new Map();
@@ -430,12 +429,6 @@ function SlackTab({ repo }) {
   const [threads, setThreads] = useState(null);
   const [error, setError] = useState(null);
   const [syncing, setSyncing] = useState(false);
-  const [index, setIndex] = useState(null);
-
-  const loadIndex = useCallback(() => api(`/index?${new URLSearchParams({ repo })}`).then(setIndex, () => {}), [repo]);
-  useEffect(() => {
-    loadIndex();
-  }, [loadIndex, total]);
 
   useEffect(() => {
     if (!mine.length) return;
@@ -451,7 +444,6 @@ function SlackTab({ repo }) {
       const { index_error } = await api('/slack/sync', { method: 'POST', body: { repo, full } });
       if (index_error) setError(index_error);
       await reload();
-      await loadIndex();
       toast(full ? 'Resynced from scratch' : 'Synced');
     } catch (e) {
       setError(e.message);
@@ -460,44 +452,21 @@ function SlackTab({ repo }) {
     }
   };
 
-  const rebuild = async () => {
-    setSyncing(true);
-    setError(null);
-    try {
-      setIndex(await api('/index', { method: 'POST', body: { repo } }));
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setSyncing(false);
-    }
-  };
-
-  const indexRow = index && ['search index', index.indexed_at || index.slack
-    ? `${plural(index.github, 'GitHub chunk')} · ${plural(index.slack, 'Slack chunk')} · ${index.model.split(':').slice(1).join(':')}`
-    : 'not built yet: it builds the first time you ask the chat about this repo'];
-
   return (
     <>
       {mine.length ? (
         <Rows rows={[
-          ...mine.map((l) => [`#${l.name}`, `${plural(l.messages, 'message')} · synced ${dateTime(l.synced_at)}`]),
-          ...(indexRow ? [indexRow] : []),
+          ...mine.map((l) => [`#${l.name}`, <>{plural(l.messages, 'message')} · synced <Time value={l.synced_at} /></>]),
         ]} />
       ) : (
-        <p className="muted">No Slack channel is linked to this repo yet. Link one to see its conversations here.</p>
+        <p className="muted">No Slack channel is linked to this repository yet. Use Link Slack channel at the top to add one.</p>
       )}
-      {/* The link button keeps the same place in the tree whether or not anything is linked, so the picker
-          dialog it owns stays open after the first link instead of unmounting with the empty state. */}
-      <div className="actions">
-        {mine.length > 0 && (
-          <>
-            <button type="button" className="btn btn-primary" onClick={() => syncNow(false)} disabled={syncing}>{syncing ? 'Syncing…' : 'Sync now'}</button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => syncNow(true)} disabled={syncing}>Full resync</button>
-          </>
-        )}
-        <button type="button" className="btn btn-ghost btn-sm" onClick={rebuild} disabled={syncing}>rebuild index</button>
-        <SlackLinkButton repo={repo} />
-      </div>
+      {mine.length > 0 && (
+        <div className="actions">
+          <button type="button" className="btn btn-primary" onClick={() => syncNow(false)} disabled={syncing}>{syncing ? 'Syncing…' : 'Sync now'}</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => syncNow(true)} disabled={syncing}>Full resync</button>
+        </div>
+      )}
       {error && <p className="error" role="alert">{error}</p>}
       {mine.length > 0 && <SlackThreads threads={threads} />}
     </>
@@ -515,14 +484,14 @@ function SlackThreads({ threads }) {
               {threads.map((t) => (
                 <li key={t.channel_id + t.ts}>
                   <b>{t.author}</b>
-                  <span className="muted">#{t.channel} · {slackTime(t.ts)} · <Ext href={t.permalink}>open in slack ↗</Ext></span>
+                  <span className="muted">#{t.channel} · <Time value={slackIso(t.ts)} /> · <Ext href={t.permalink}>Open in Slack ↗</Ext></span>
                   <p className="slack-text">{t.text}</p>
                   {t.replies.length > 0 && (
                     <details className="replies">
                       <summary>{plural(t.replies.length, 'reply', 'replies')}</summary>
                       {t.replies.map((r) => (
                         <div key={r.ts} className="reply">
-                          <b>{r.author}</b> <span className="muted">{slackTime(r.ts)}</span>
+                          <b>{r.author}</b> <span className="muted"><Time value={slackIso(r.ts)} /></span>
                           <p className="slack-text">{r.text}</p>
                         </div>
                       ))}
@@ -549,7 +518,7 @@ function LateReasons({ repo, number }) {
       <ul className="list">
         {rows.map((r) => (
           <li key={r.created_at}>
-            <b>{r.github_login}</b> <span className="muted">{dateTime(r.created_at)}{r.permalink && <> · <Ext href={r.permalink}>open in slack ↗</Ext></>}</span>
+            <b>{r.github_login}</b> <span className="muted"><Time value={r.created_at} />{r.permalink && <> · <Ext href={r.permalink}>Open in Slack ↗</Ext></>}</span>
             <p className="slack-text">{r.text}</p>
           </li>
         ))}
@@ -779,10 +748,6 @@ function ChatPanel({ repo, open, onClose }) {
     </aside>
   );
 }
-
-const Section = ({ title, children }) => (
-  <section className="section"><h2 className="section-title">{title}</h2>{children}</section>
-);
 
 const Rows = ({ rows }) => (
   <dl className="rows">
@@ -1123,7 +1088,6 @@ function Layout() {
           </button>
           <div className="side-foot">
             <div className="side-status">
-              <span>GitHub · read-only</span>
               <span>Slack · {slack.status?.configured ? (slack.links.length ? `${plural(new Set(slack.links.map((l) => l.channel_id)).size, 'channel')} linked` : 'no channels linked') : 'not connected'}</span>
               {model && <Link to="/settings">Model · {model.model}{model.provider === 'ollama' ? ' on this machine' : ''}</Link>}
             </div>
@@ -1270,7 +1234,7 @@ function BotSettings() {
       )}
       <div>
         <button type="button" className="btn" disabled={busy} onClick={() => run(async () => { const r = await api('/people/match', { method: 'POST' }); toast('People matched'); return r; })}>
-          {busy ? 'Matching…' : 'Match people from indexed repos'}
+          {busy ? 'Matching…' : 'Match people'}
         </button>
       </div>
     </>
@@ -1347,21 +1311,20 @@ function RepoDigest({ repo }) {
     try { await fn(); await load(); } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
   if (!data) return <li className="muted">{repo}</li>;
-  const noChannel = !data.channels.length;
   const last = data.log[0];
   return (
     <li className="repo-digest">
       <div className="digest-row">
         <span className="person-login">{repo}</span>
         <div className="field">
-          <select aria-label={`Digest for ${repo}`} value={data.schedule} disabled={busy || noChannel}
+          <select aria-label={`Digest for ${repo}`} value={data.schedule} disabled={busy}
             onChange={(e) => act(() => api('/digest', { method: 'PUT', body: { repo, schedule: e.target.value } }))}>
             <option value="off">Off</option>
             <option value="daily">Daily, on weekdays</option>
             <option value="weekly">Weekly, on Mondays</option>
           </select>
         </div>
-        <button type="button" className="btn btn-sm" disabled={busy || noChannel}
+        <button type="button" className="btn btn-sm" disabled={busy}
           onClick={() => act(async () => {
             const r = await api('/digest/send', { method: 'POST', body: { repo } });
             setResults(r.results);
@@ -1372,12 +1335,12 @@ function RepoDigest({ repo }) {
         </button>
       </div>
       <p className="muted">
-        {noChannel ? 'Link a Slack channel to this repository first.' : `Posts to ${data.channels.map((c) => `#${c}`).join(', ')}.`}
+        {`Posts to ${data.channels.map((c) => `#${c}`).join(', ')}.`}
         {last && ` Last posted ${shortTime(last.sent_at)} to #${last.channel_name}.`}
       </p>
       {error && <p className="error" role="alert">{error}</p>}
       {results?.filter((r) => !r.ok).map((r) => <p key={r.channel} className="error" role="alert">#{r.channel}: {r.error}</p>)}
-      {data.preview && !noChannel && (
+      {data.preview && (
         <details className="digest-preview">
           <summary>Preview</summary>
           <pre>{slackPlain(data.preview)}</pre>
@@ -1387,19 +1350,22 @@ function RepoDigest({ repo }) {
   );
 }
 
+// Repositories with at least one linked Slack channel: the only ones the bot's features apply to.
+const useLinkedRepos = () => {
+  const { links } = useContext(SlackContext);
+  return [...new Set(links.map((l) => l.repo))].sort();
+};
+const NO_LINKED = 'No repository is linked to a Slack channel yet. Open a repository and use Link Slack channel.';
+
 function DigestSettings() {
-  const [repos, setRepos] = useState(null);
-  useEffect(() => { api('/repos/indexed').then(setRepos, () => setRepos([])); }, []);
-  if (!repos) return <Skeleton />;
-  if (!repos.length) return <p className="muted">No repos indexed yet. Open a repo's Overview first.</p>;
+  const repos = useLinkedRepos();
+  if (!repos.length) return <p className="muted">{NO_LINKED}</p>;
   return <ul className="list">{repos.map((r) => <RepoDigest key={r} repo={r} />)}</ul>;
 }
 
 function AlertSettings() {
-  const [repos, setRepos] = useState(null);
-  useEffect(() => { api('/repos/indexed').then(setRepos, () => setRepos([])); }, []);
-  if (!repos) return <Skeleton />;
-  if (!repos.length) return <p className="muted">No repos indexed yet. Open a repo's Overview first.</p>;
+  const repos = useLinkedRepos();
+  if (!repos.length) return <p className="muted">{NO_LINKED}</p>;
   return <ul className="list">{repos.map((r) => <RepoAlerts key={r} repo={r} />)}</ul>;
 }
 
@@ -1795,17 +1761,6 @@ function Attention({ repo }) {
         </section>
       ))}
 
-      {data.review.length > 0 && (
-        <section className="ledger" aria-labelledby="review-h">
-          <header className="ledger-head"><h2 id="review-h">Waiting for review</h2></header>
-          {data.review.map((i) => (
-            <div key={i.number} className="ledger-row compact">
-              <div className="ledger-item"><Link to={link(i)}><Title text={i.title} /></Link> <span className="ref">#{i.number}</span></div>
-              <div className="ledger-side">{owners(i)}</div>
-            </div>
-          ))}
-        </section>
-      )}
     </>
   );
 }

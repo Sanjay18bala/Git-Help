@@ -35,7 +35,7 @@ A read-only GitHub dashboard: Express backend + React SPA, both served by one Vi
 - Messages are stored in Slack markup; `plainText()` converts mentions/links/entities when reading, using the `users` table.
 - Routes require a GitHub session and validate `repo` (`owner/name`) and channel ids. Slack API errors become 502s with friendly messages (`friendly()`).
 - Single-user by design: one token and one database for the whole app.
-- Frontend: `SlackContext` (status + all links, loaded once in `Layout`) feeds `SlackLinkButton` (opens `SlackLinkDialog`, a native `<dialog>`), the repo's **Slack** tab (`SlackTab`) and the chat panel's status line. `SlackTab` keeps the link button at a fixed tree position so its dialog survives the first link.
+- Frontend: `SlackContext` (status + all links, loaded once in `Layout`) feeds `SlackLinkButton` (opens `SlackLinkDialog`, a native `<dialog>`), the repo's **Slack** tab (`SlackTab`) and the chat panel's status line. The link button lives in the repo header only (always mounted, so its dialog survives the first link).
 
 ### Chat / RAG (`rag.js`, `llm.js`, `/api/chat`)
 

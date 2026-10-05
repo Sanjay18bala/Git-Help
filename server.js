@@ -143,7 +143,7 @@ const REPO = /^[\w.-]+\/[\w.-]+$/;
 const CHANNEL = /^[CG][A-Z0-9]+$/;
 const slackApi = express.Router();
 
-// Every /api/slack, /api/settings, /api/index and /api/chat route needs a GitHub session; req.token is its token.
+// Every /api/slack, /api/settings and /api/chat route needs a GitHub session; req.token is its token.
 const requireSession = (req, res, next) => {
   req.token = sessionToken(req);
   if (!req.token) return res.status(401).json({ message: 'Not signed in' });
@@ -223,13 +223,6 @@ api.post('/settings/test', async (req, res) => res.json(await llm.testSettings()
 
 const optionalRepo = (v) => (v == null || v === '' ? null : repoParam(v));
 
-api.get('/index', (req, res) => res.json(rag.indexStats(optionalRepo(req.query.repo))));
-api.post('/index', async (req, res) => {
-  const repo = repoParam(req.body?.repo);
-  await rag.indexGithub(repo, req.token);
-  for (const { channel_id } of slack.links().filter((l) => l.repo === repo)) await rag.indexSlack(channel_id);
-  res.json(rag.indexStats(repo));
-});
 
 // ---- Slack bot: status and GitHub ↔ Slack people links (see bot.js) ----
 api.get('/bot/status', async (req, res) => {
@@ -242,9 +235,9 @@ api.get('/bot/status', async (req, res) => {
   }
 });
 const indexedRepos = () => db().prepare('SELECT repo FROM indexed_repos').all().map((r) => r.repo);
-api.get('/repos/indexed', (req, res) => res.json(indexedRepos()));
 api.get('/people', async (req, res) => res.json({ people: bot.listPeople(), slackUsers: await bot.slackPeople() }));
-api.post('/people/match', async (req, res) => res.json({ people: await bot.refreshPeople(indexedRepos(), req.token) }));
+// Only repositories linked to Slack: those are the ones the bot messages people about.
+api.post('/people/match', async (req, res) => res.json({ people: await bot.refreshPeople([...new Set(slack.links().map((l) => l.repo))], req.token) }));
 api.put('/people/:login', async (req, res) => {
   const login = req.params.login;
   const id = req.body?.slack_user_id ?? null;

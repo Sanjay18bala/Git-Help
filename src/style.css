@@ -411,7 +411,6 @@ input::placeholder { color: var(--muted); }
 .btn-ghost:hover:not(:disabled) { border-color: transparent; background: var(--subtle); color: var(--fg); }
 .btn-sm { height: 28px; padding: 0 10px; font: 12px var(--sans); border-radius: var(--radius); }
 .btn-lg { height: 44px; padding: 0 var(--s-5); font-size: var(--text-base); }
-.ask-btn { margin-top: var(--s-2); }
 
 /* ---------- rows: state icon · content · comments & avatars (GitHub-style scanning) ---------- */
 .list li.row { display: grid; grid-template-columns: 16px 1fr auto; gap: var(--s-3); align-items: start;
