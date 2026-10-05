@@ -1,14 +1,18 @@
 # GitHelp
 
-GitHelp shows what's late in your GitHub repositories, and why.
+**Your project already knows why.** GitHelp turns a repository's GitHub history and its Slack conversations into one
+searchable memory. Ask anything about the work, such as why a decision was made, what is blocking a release or why an
+issue is late, and get an answer built from the exact issues, reviews and messages, with a link to each.
 
-When an issue passes its milestone's due date, GitHelp's Slack bot messages the person it's assigned to and asks what's
-holding it up. Their reply is kept on the issue. Anyone can then ask GitHelp why an issue is late and get the answer,
-with links to the GitHub issue and the Slack message it came from.
+When the answer was never written down, GitHelp asks. Its Slack bot messages the owner of an issue that has passed its
+milestone's due date, asks what's holding it up and when they expect to finish, and adds the reply to the memory. A
+daily or weekly digest posts what's late, and why, to the team's channel.
 
 ![GitHelp's sign-in page, with an example of a late issue, the bot's Slack message and the answer to "why is it late?"](docs/githelp.png)
 
-GitHelp is read-only on GitHub and runs on your own machine. By default the questions are answered by a local model
+Under the hood it is retrieval-augmented generation: issues, pull requests, reviews, comments, READMEs and linked Slack
+channels are indexed with both keyword and semantic search, the best matches are given to a language model, and the
+answer cites them. GitHelp is read-only on GitHub and runs on your own machine; by default the model runs locally
 through Ollama, so nothing leaves your computer.
 
 ## Contents

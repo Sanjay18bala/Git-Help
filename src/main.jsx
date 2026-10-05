@@ -793,8 +793,12 @@ function Home() {
     <main className="landing">
       <section className="landing-copy">
         <Brand to="/" />
-        <h1>See what's late in your repos, and why.</h1>
-        <p className="lead">GitHelp tracks your GitHub deadlines, asks owners in Slack why late work is late, and answers with the reason.</p>
+        <h1>Your project already knows why.</h1>
+        <p className="lead">
+          GitHelp turns your GitHub history and Slack conversations into one searchable memory. Ask anything about the
+          work and get an answer built from the exact issues, reviews and messages, with a link to each. When the answer
+          was never written down, its Slack bot asks the person who knows.
+        </p>
         {error && (
           <div className="alert" role="alert">
             <span className="alert-label">Sign-in failed</span>
@@ -802,9 +806,15 @@ function Home() {
           </div>
         )}
         <a className="btn btn-primary btn-lg" href="/auth/login"><GitHubMark />Continue with GitHub</a>
-        <p className="hint">Read-only access. Your password never reaches GitHelp.</p>
+        <p className="hint">Read-only on GitHub. Runs on your own machine.</p>
       </section>
       <LandingDemo />
+      <dl className="landing-facts" aria-label="How it works">
+        <div><dt>Indexes everything</dt><dd>Issues, pull requests, reviews, comments, READMEs and linked Slack channels, kept in sync.</dd></div>
+        <div><dt>Searches by meaning</dt><dd>Keyword and semantic search together, so it finds the thread even when nobody used the same words.</dd></div>
+        <div><dt>Shows its sources</dt><dd>Every answer links to the issue, review or message it came from, so you can check it.</dd></div>
+        <div><dt>Private by default</dt><dd>Answers come from a model on your machine. Read-only on GitHub. Nothing is sent anywhere else unless you choose a cloud model.</dd></div>
+      </dl>
     </main>
   );
 }
@@ -812,18 +822,18 @@ function Home() {
 // The core loop on the sign-in page, built from the app's own styles: a late issue, the bot's Slack DM and its
 // reply, then Ask answering with the reason. Advances every few seconds unless the visitor prefers reduced motion
 // or picks a step. The repository, people and issues are made up for illustration.
-const DEMO_STEPS = ['Spot what’s late', 'The bot asks why', 'Ask and get the reason'];
+const DEMO_STEPS = ['Ask anything', 'Fill the gaps', 'Every morning in Slack'];
 function LandingDemo() {
   const [step, setStep] = useState(0);
   const [auto, setAuto] = useState(() => !matchMedia('(prefers-reduced-motion: reduce)').matches);
   useEffect(() => {
     if (!auto) return undefined;
-    const t = setTimeout(() => setStep((s) => (s + 1) % DEMO_STEPS.length), 4500);
+    const t = setTimeout(() => setStep((s) => (s + 1) % DEMO_STEPS.length), 6000);
     return () => clearTimeout(t);
   }, [auto, step]);
   const pick = (i) => { setAuto(false); setStep(i); };
   return (
-    <section className="demo" aria-label="How GitHelp works, with an example repository">
+    <section className="demo" aria-label="What GitHelp does, with an example repository">
       <div className={`demo-steps${auto ? ' auto' : ''}`} role="tablist" aria-label="Demo steps">
         {DEMO_STEPS.map((label, i) => (
           <button key={label} type="button" role="tab" aria-selected={step === i} aria-controls="demo-panel" onClick={() => pick(i)}>
@@ -832,24 +842,20 @@ function LandingDemo() {
         ))}
       </div>
       <div className="demo-frame" id="demo-panel" role="tabpanel" aria-live="polite">
-        <div className="demo-bar"><span>acme/storefront</span><span>{['Overview', 'Slack · direct message', 'Ask'][step]}</span></div>
+        <div className="demo-bar"><span>acme/storefront</span><span>{['Ask', 'Slack · direct message', 'Slack · #checkout'][step]}</span></div>
         {step === 0 && (
           <div className="demo-body" key="s0">
-            <p className="demo-lead">2 items in v2.4 are past due. None has a reason from the assignee yet.</p>
-            <div className="ledger-row">
-              <div className="ledger-item">
-                <span className="ledger-title">Add rate limiting to the checkout API</span>
-                <p className="ledger-meta"><span className="ref">#212</span> · Issue · alex · <span className="late-text">3 days late</span></p>
-              </div>
-              <div className="ledger-why"><p className="muted">No reason yet. Asked Oct 2, no reply.</p></div>
-            </div>
-            <div className="ledger-row">
-              <div className="ledger-item">
-                <span className="ledger-title">Fix flaky payment webhook tests</span>
-                <p className="ledger-meta"><span className="ref">#198</span> · Issue · sam · <span className="late-text">3 days late</span></p>
-              </div>
-              <div className="ledger-why"><p className="muted">No reason yet. Asked Oct 2, no reply.</p></div>
-            </div>
+            <p className="demo-q">Why did we move checkout to the new payments API?</p>
+            <p>
+              The old provider couldn't do partial refunds, which support needs for split orders <span className="cite">[1]</span>.
+              The team agreed in #checkout to migrate during v2.4 <span className="cite">[2]</span>, and the review of #187 kept the
+              old client behind a flag until every store has moved <span className="cite">[3]</span>.
+            </p>
+            <ol className="demo-sources">
+              <li>Issue #164: Partial refunds for split orders <span className="muted">· GitHub</span></li>
+              <li>Thread in #checkout, Sep 18 <span className="muted">· Slack</span></li>
+              <li>Review of #187: keep the old client behind a flag <span className="muted">· GitHub</span></li>
+            </ol>
           </div>
         )}
         {step === 1 && (
@@ -860,13 +866,14 @@ function LandingDemo() {
           </div>
         )}
         {step === 2 && (
-          <div className="demo-body" key="s2">
-            <p className="demo-q">Why is #212 late?</p>
-            <p>#212 "Add rate limiting to the checkout API" is waiting on the security review, and alex expects to finish it by Friday, Oct 9 <span className="cite">[1]</span><span className="cite">[2]</span>.</p>
-            <ol className="demo-sources">
-              <li>Issue #212, status and reason <span className="muted">· GitHub</span></li>
-              <li>alex's reply to the overdue alert <span className="muted">· Slack DM</span></li>
-            </ol>
+          <div className="demo-body demo-dm" key="s2">
+            <div className="dm-msg">
+              <b>GitHelp</b>
+              <p><strong>storefront</strong> · 2 items past due in v2.4</p>
+              <p>• #212 Add rate limiting to the checkout API · 3 days late · alex: “Waiting on the security review” · expects Oct 9</p>
+              <p>• #198 Fix flaky payment webhook tests · 3 days late · sam · asked Oct 2, no reply</p>
+              <p>Next up: v2.5 due Oct 20 (in 13 days) · 4 items</p>
+            </div>
           </div>
         )}
       </div>
@@ -879,7 +886,7 @@ function LandingDemo() {
 // behaviour changes, change its answer here too.
 const HELP = [
   ['Getting started', [
-    ['What does GitHelp do?', 'It shows what is late in your GitHub repositories and why. When an issue passes its milestone’s due date, GitHelp’s Slack bot asks the person it is assigned to what is holding it up and when they expect to finish. Their answers appear next to the issue, in a Slack digest if you turn one on, and in Ask, which answers questions about a repository with links to its sources.'],
+    ['What does GitHelp do?', 'It turns a repository’s GitHub history (issues, pull requests, reviews, comments, the README) and its linked Slack channels into one searchable memory. Ask answers questions about the work from that memory and links every source. When an issue passes its milestone’s due date, GitHelp’s Slack bot asks the person it is assigned to what is holding it up and when they expect to finish, and their answer becomes part of the memory. It also shows what is late on each repository’s Overview and the Attention page, and can post a digest to Slack.'],
     ['Can GitHelp change anything in my repositories?', 'No. It only reads from GitHub. Its server forwards read requests only, to a fixed list of endpoints, so it cannot comment, merge, close or edit anything. GitHub has no read-only permission for private repositories, which is why the sign-in asks for repository access.'],
     ['Which repositories can I see?', 'Every repository your GitHub account can read: your own, ones you collaborate on, and ones your organizations share. If an organization’s repositories are missing, that organization restricts third-party apps: open github.com/settings/applications, choose your GitHelp app and grant or request access for the organization.'],
     ['What do I need to set up first?', 'For deadlines: give milestones a due date on GitHub and add issues to them. For reasons: link a Slack channel to the repository, match people in Settings → Slack bot, and turn on Settings → Overdue alerts for the repository. Everything else works as soon as you sign in.'],
@@ -907,7 +914,7 @@ const HELP = [
     ['The digest says the bot isn’t in the channel', 'The bot can only post in channels it has been added to. Type /invite @GitHelp in the channel, then try again.'],
   ]],
   ['Ask', [
-    ['What can Ask answer?', 'Questions about the work: why something is late, when it will be done, what was decided and why, who is working on what, what is blocking a release, how many issues are open. Inside a repository it uses that repository’s issues, pull requests, comments, README, linked Slack channels and replies to the bot. On the other pages it uses everything indexed so far. Every answer links its sources.'],
+    ['What can Ask answer?', 'Questions about the work: why something is late, when it will be done, what was decided and why, who is working on what, what is blocking a release, how many issues are open. Inside a repository it uses that repository’s issues, pull requests, reviews, comments, README, linked Slack channels and replies to the bot. On the other pages it uses everything indexed so far. Every answer links its sources.'],
     ['How do I open Ask?', 'Click Ask a question in the sidebar or press ⌘J (Ctrl+J on Windows and Linux). Press / anywhere outside a text field to jump to it. Buttons like Ask why it’s late ask for you.'],
     ['Which model answers, and where does my data go?', 'By default a model running on this machine through Ollama, so nothing leaves it. In Settings you can choose Anthropic or any OpenAI-compatible service instead; then each question and the GitHub and Slack text that matches it are sent to that service.'],
     ['An answer is wrong or vague', 'Check the cited sources: answers come only from them. Small local models make mistakes; a larger model (Settings → Chat model) gives better answers if your machine has the memory.'],

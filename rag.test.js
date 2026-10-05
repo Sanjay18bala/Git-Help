@@ -65,6 +65,10 @@ globalThis.fetch = async (url, init = {}) => {
           created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-02T00:00:00Z', html_url: 'https://github.com/o/brewlog/pull/16' },
       ]));
     }
+    if (u.pathname.endsWith('/reviews')) {
+      return new Response(JSON.stringify([{ user: { login: 'priya' }, state: 'CHANGES_REQUESTED', submitted_at: '2026-09-02T00:00:00Z',
+        body: 'Keep JSON until node:sqlite is stable on our Node version.' }, { user: { login: 'zed' }, state: 'APPROVED', body: '' }]));
+    }
     if (u.pathname.endsWith('/comments')) {
       return new Response(JSON.stringify([{ user: { login: 'sanjay' }, created_at: '2026-09-02T00:00:00Z', body: 'Decision: staying on JSON.' }]));
     }
@@ -99,7 +103,12 @@ assert(calls.embedTexts.every((t) => t.startsWith('search_document: ')), 'nomic 
 
 await rag.indexGithub('o/brewlog', 'gh-token');
 const ghIds = d.prepare("SELECT id FROM chunks WHERE source = 'github' ORDER BY id").all().map((r) => r.id);
-assert.deepEqual(ghIds, ['gh:o/brewlog:#14', 'gh:o/brewlog:#16', 'gh:o/brewlog:#3', 'gh:o/brewlog:#9', 'gh:o/brewlog:#9:comments:0', 'gh:o/brewlog:readme:0']);
+assert.deepEqual(ghIds, ['gh:o/brewlog:#14', 'gh:o/brewlog:#16', 'gh:o/brewlog:#16:comments:0', 'gh:o/brewlog:#3', 'gh:o/brewlog:#9', 'gh:o/brewlog:#9:comments:0', 'gh:o/brewlog:readme:0']);
+// A pull request's discussion includes its review summaries (empty ones skipped) and inline review comments.
+const prDiscussion = db().prepare("SELECT text FROM chunks WHERE id = 'gh:o/brewlog:#16:comments:0'").get().text;
+assert.match(prDiscussion, /priya reviewed \(changes requested\) on 2026-09-0\d: Keep JSON until node:sqlite is stable/);
+assert.doesNotMatch(prDiscussion, /zed reviewed/);
+assert.match(prDiscussion, /sanjay on the code \(2026-09-0\d\): Decision: staying on JSON\./);
 assert.match(d.prepare("SELECT text FROM chunks WHERE id = 'gh:o/brewlog:#14'").get().text, /Milestone: v0\.3\.0, due 2020-01-01\./);
 assert.match(d.prepare("SELECT text FROM chunks WHERE id = 'gh:o/brewlog:#16'").get().text, /State: closed\./);
 

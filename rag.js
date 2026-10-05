@@ -116,6 +116,8 @@ async function gh(token, path, accept = 'application/vnd.github+json') {
 const MAX_ITEMS = 200; // most recently updated issues + PRs per repo
 
 // Issues and PRs (one chunk each, plus their comments), and the README. Also returns one row per item.
+const DISCUSSION_VERSION = '2'; // 2: pull request reviews and inline review comments
+
 export async function githubChunks(repo, token) {
   const d = db();
   const items = [];
@@ -126,6 +128,10 @@ export async function githubChunks(repo, token) {
   }
 
   const storedComments = d.prepare('SELECT * FROM chunks WHERE id LIKE ? ORDER BY id');
+  const prevItem = d.prepare('SELECT updated_at FROM items WHERE repo = ? AND number = ?');
+  // Bump DISCUSSION_VERSION when what goes into discussion chunks changes, so each repo re-reads it once.
+  const versionKey = `discussion-index:${repo}`;
+  const current = d.prepare('SELECT value FROM settings WHERE key = ?').get(versionKey)?.value === DISCUSSION_VERSION;
   const docs = [];
   const rows = [];
   for (const it of items.slice(0, MAX_ITEMS)) {
@@ -155,18 +161,34 @@ export async function githubChunks(repo, token) {
     split(`${isPR ? 'Pull request' : 'Issue'} #${it.number}: ${it.title}\n${facts}\n\n${it.body ?? ''}`.trim())
       .forEach((text, i) => docs.push(doc(`${base}${i ? `:${i}` : ''}`, text)));
 
-    if (!it.comments) continue;
-    // Comments only change when the item's updated_at does: reuse the stored chunks instead of refetching.
+    // Discussion: conversation comments, plus a pull request's reviews and inline review comments, which is where
+    // much of the "why" lives. It only changes when the item's updated_at does, so stored chunks are reused.
     const kept = storedComments.all(`${base}:comments:%`);
-    if (kept.length && kept.every((c) => c.ts === it.updated_at)) {
+    const unchanged = current && prevItem.get(repo, it.number)?.updated_at === it.updated_at;
+    if (unchanged && kept.every((c) => c.ts === it.updated_at)) {
       docs.push(...kept.map((c) => ({ ...c, title: `${title} (comments)` })));
       continue;
     }
-    const comments = await gh(token, `repos/${repo}/issues/${it.number}/comments?per_page=100`) ?? [];
-    const thread = comments.map((c) => `${c.user?.login ?? 'unknown'} (${localDayOf(c.created_at)}): ${c.body}`).join('\n\n');
-    split(`Comments on ${kind} #${it.number} (${it.title}):\n${thread}`)
+    const parts = [];
+    if (it.comments) {
+      const comments = await gh(token, `repos/${repo}/issues/${it.number}/comments?per_page=100`) ?? [];
+      parts.push(...comments.map((c) => `${c.user?.login ?? 'unknown'} (${localDayOf(c.created_at)}): ${c.body}`));
+    }
+    if (isPR) {
+      const reviews = await gh(token, `repos/${repo}/pulls/${it.number}/reviews?per_page=100`) ?? [];
+      parts.push(...reviews.filter((r) => r.body?.trim()).map((r) =>
+        `${r.user?.login ?? 'unknown'} reviewed (${String(r.state).toLowerCase().replace('_', ' ')}) on ${localDayOf(r.submitted_at)}: ${r.body}`));
+      const inline = await gh(token, `repos/${repo}/pulls/${it.number}/comments?per_page=100`) ?? [];
+      parts.push(...inline.map((c) => {
+        const line = c.line ?? c.original_line;
+        return `${c.user?.login ?? 'unknown'} on ${c.path ?? 'the code'}${line ? ` line ${line}` : ''} (${localDayOf(c.created_at)}): ${c.body}`;
+      }));
+    }
+    if (!parts.length) continue;
+    split(`Discussion on ${kind} #${it.number} (${it.title}):\n${parts.join('\n\n')}`)
       .forEach((text, i) => docs.push(doc(`${base}:comments:${i}`, text, ' (comments)')));
   }
+  d.prepare('INSERT INTO settings VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value').run(versionKey, DISCUSSION_VERSION);
 
   const readme = await gh(token, `repos/${repo}/readme`, 'application/vnd.github.raw');
   if (readme) {
@@ -628,7 +650,10 @@ export async function* answer({ repo, messages, signal, mode = 'project' }) {
   // another issue's reason from (the overview's reason column, other issues' replies). Counting questions name no
   // issue, so they still get the overview.
   const named = new Set(facts.map((f) => f.id.split('#')[1]));
-  const retrieved = await retrieve(query, repo);
+  // Counting questions get only the overviews: their counts block answers them exactly, and extra chunks about the
+  // same words (a pull request's discussion for "how many pull requests") led gemma3:4b to quote the wrong number.
+  const counting = !facts.length && /\b(how many|number of|count of)\b/i.test(question);
+  const retrieved = counting ? [] : await retrieve(query, repo);
   const found = facts.length
     ? [...facts, ...retrieved.filter((c) => !c.id.startsWith('followup:') || named.has(c.id.split('#')[1].split(':')[0]))]
     : [...overviews, ...retrieved];
