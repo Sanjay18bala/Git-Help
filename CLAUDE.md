@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 npm install
 npm run dev     # Vite dev server on http://localhost:5173 (also serves the API — there is no separate backend process)
-npm test        # node --test: runs every *.test.js (plain node:assert scripts, no framework); no linter
+npm test        # node --test: runs every *.test.js (plain node:assert scripts, no framework); no linter. Tests and eval/ are gitignored: local only, not in the public repo
 node slack.test.js  # run a single test file
 node eval/rag-eval.js  # RAG answer key against the real dev server + models (needs the brewlog demo data and `gh` auth)
 npx vite build  # sanity-check that the frontend compiles (dist/ is gitignored)

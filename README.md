@@ -239,7 +239,6 @@ matches it are sent to that provider.
 ## Development
 
 ```bash
-npm test                 # unit tests (node --test, no framework)
 npm run build && npm start   # the production server on http://localhost:5173 (stop npm run dev first)
 npx vite build           # check that the frontend compiles
 ```
@@ -258,11 +257,11 @@ npx vite build           # check that the frontend compiles
 
 `CLAUDE.md` describes the architecture and design rules in more detail.
 
-To show new GitHub data: add the endpoint to `ALLOWED` in `server.js`, add a case to `server.test.js`, then fetch it
+To show new GitHub data: add the endpoint to `ALLOWED` in `server.js`, then fetch it
 in the UI. Write actions (commenting, merging) are deliberately out of scope; please open an issue to discuss them
 first.
 
-Contributions are welcome: fork, make your change, run `npm test`, and open a pull request explaining what changed and
+Contributions are welcome: fork, make your change, check it with `npx vite build` and the app itself, and open a pull request explaining what changed and
 why.
 
 ## License

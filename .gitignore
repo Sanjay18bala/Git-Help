@@ -4,3 +4,7 @@ dist
 .data
 .DS_Store
 brag-output*
+
+# Tests and the answer-quality eval stay local (not published)
+*.test.js
+eval/
