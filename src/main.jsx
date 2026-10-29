@@ -687,7 +687,7 @@ function ChatPanel({ repo, open, onClose }) {
           {settings && (
             <div className="chat-context">
               <Link to="/settings" className="model-link">
-                {settings.chat.model} · {settings.chat.provider === 'ollama' ? 'local' : settings.chat.provider}
+                {settings.chat.model} · {settings.chat.provider === 'ollama' ? 'local' : PROVIDER_NAMES[settings.chat.provider]}
               </Link>
             </div>
           )}
@@ -916,7 +916,7 @@ const HELP = [
   ['Ask', [
     ['What can Ask answer?', 'Questions about the work: why something is late, when it will be done, what was decided and why, who is working on what, what is blocking a release, how many issues are open. Inside a repository it uses that repository’s issues, pull requests, reviews, comments, README, linked Slack channels and replies to the bot. On the other pages it uses everything indexed so far. Every answer links its sources.'],
     ['How do I open Ask?', 'Click Ask a question in the sidebar or press ⌘J (Ctrl+J on Windows and Linux). Press / anywhere outside a text field to jump to it. Buttons like Ask why it’s late ask for you.'],
-    ['Which model answers, and where does my data go?', 'By default a model running on this machine through Ollama, so nothing leaves it. In Settings you can choose Anthropic or any OpenAI-compatible service instead; then each question and the GitHub and Slack text that matches it are sent to that service.'],
+    ['Which model answers, and where does my data go?', 'By default a model running on this machine through Ollama, so nothing leaves it. In Settings you can choose Nebius Token Factory (NVIDIA Nemotron by default), Anthropic or any OpenAI-compatible service instead; then each question and the GitHub and Slack text that matches it are sent to that service.'],
     ['An answer is wrong or vague', 'Check the cited sources: answers come only from them. Small local models can make mistakes; a larger model (Settings → Chat model) gives better answers if your machine has the memory for it.'],
   ]],
   ['Using the app', [
@@ -1119,7 +1119,7 @@ function Layout() {
   );
 }
 
-const PROVIDER_NAMES = { ollama: 'Ollama (local)', anthropic: 'Anthropic (Claude)', openai: 'OpenAI-compatible API' };
+const PROVIDER_NAMES = { ollama: 'Ollama (local)', nebius: 'Nebius Token Factory', anthropic: 'Anthropic (Claude)', openai: 'OpenAI-compatible API' };
 
 const toForm = (s) => ({
   chat: { ...s.chat },
@@ -1127,6 +1127,7 @@ const toForm = (s) => ({
   ollamaUrl: s.ollama.url,
   openaiUrl: s.openai.url,
   openaiKey: '',
+  nebiusKey: '',
   anthropicKey: '',
   clear: {}, // keys to remove on save
 });
@@ -1137,6 +1138,7 @@ const toPatch = (f) => ({
   embed: f.embed,
   ollama: { url: f.ollamaUrl },
   openai: { url: f.openaiUrl, key: f.clear.openai ? null : f.openaiKey || undefined },
+  nebius: { key: f.clear.nebius ? null : f.nebiusKey || undefined },
   anthropic: { key: f.clear.anthropic ? null : f.anthropicKey || undefined },
 });
 
@@ -1440,7 +1442,7 @@ function SettingsPage() {
             <div className="field">
               <label htmlFor="chat-provider">Provider</label>
               <select id="chat-provider" value={form.chat.provider} onChange={(e) => setProvider('chat', e.target.value)}>
-                {['ollama', 'anthropic', 'openai'].map((p) => <option key={p} value={p}>{PROVIDER_NAMES[p]}</option>)}
+                {['ollama', 'nebius', 'anthropic', 'openai'].map((p) => <option key={p} value={p}>{PROVIDER_NAMES[p]}</option>)}
               </select>
             </div>
             <ModelField id="chat-model" label="Model" value={form.chat.model} options={modelList(form.chat.provider)}
@@ -1453,7 +1455,7 @@ function SettingsPage() {
             <div className="field">
               <label htmlFor="embed-provider">Provider</label>
               <select id="embed-provider" value={form.embed.provider} onChange={(e) => setProvider('embed', e.target.value)}>
-                {['ollama', 'openai'].map((p) => <option key={p} value={p}>{PROVIDER_NAMES[p]}</option>)}
+                {['ollama', 'nebius', 'openai'].map((p) => <option key={p} value={p}>{PROVIDER_NAMES[p]}</option>)}
               </select>
             </div>
             <ModelField id="embed-model" label="Model" value={form.embed.model} options={modelList(form.embed.provider)}
@@ -1466,6 +1468,9 @@ function SettingsPage() {
             <label htmlFor="ollama-url">Ollama URL</label>
             <input id="ollama-url" type="url" value={form.ollamaUrl} onChange={(e) => set({ ollamaUrl: e.target.value })} />
           </div>
+          <KeyField label="Nebius Token Factory API key" id="nebius-key" state={settings.nebius.key} value={form.nebiusKey}
+            cleared={form.clear.nebius} onChange={(v) => set({ nebiusKey: v })}
+            onClear={() => set({ clear: { ...form.clear, nebius: true } })} />
           <KeyField label="Anthropic API key" id="anthropic-key" state={settings.anthropic.key} value={form.anthropicKey}
             cleared={form.clear.anthropic} onChange={(v) => set({ anthropicKey: v })}
             onClear={() => set({ clear: { ...form.clear, anthropic: true } })} />

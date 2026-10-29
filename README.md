@@ -31,7 +31,8 @@ through Ollama, so nothing leaves your computer.
 - **Node.js 22.13 or newer.** Check with `node -v`.
 - **A GitHub account** with access to the repositories you want to track.
 - **A Slack workspace where you can install an app.** Some workspaces need an admin to approve new apps.
-- **[Ollama](https://ollama.com)** to run the models locally (free), or an Anthropic or OpenAI-compatible API key.
+- **[Ollama](https://ollama.com)** to run the models locally (free), or a [Nebius Token Factory](https://tokenfactory.nebius.com),
+  Anthropic or OpenAI-compatible API key.
   About 4 GB of disk for the default models.
 
 ## Set up
@@ -196,9 +197,33 @@ Good to know:
 
 ## Using a cloud model instead of Ollama
 
+### Nebius Token Factory (NVIDIA Nemotron)
+
+GitHelp has built-in support for [Nebius Token Factory](https://tokenfactory.nebius.com), which hosts open models
+including NVIDIA's Nemotron family. Add your key to `.env`:
+
+```bash
+NEBIUS_API_KEY=your-key
+```
+
+or paste it under **Settings › Connections**. Then set both providers to **Nebius Token Factory** and click **Save and
+test**. The defaults are:
+
+| Job | Model |
+|---|---|
+| Answers and routing | `nvidia/nemotron-3-super-120b-a12b` |
+| Semantic search | `Qwen/Qwen3-Embedding-8B` |
+
+Any other Token Factory model can be picked from the list. GitHelp switches Nemotron's reasoning off
+(`reasoning_effort: "none"`): answers are written from retrieved sources, and without reasoning the model replies
+several times faster and routes questions more accurately. If a model still sends `<think>` blocks, GitHelp removes them.
+Switching the embedding model rebuilds the search index on the next question.
+
+### Other providers
+
 In **Settings**, set the chat provider to **Anthropic** or **OpenAI-compatible** (OpenAI, Groq, OpenRouter, Together,
 LM Studio, vLLM), enter the API key and click **Save and test**. Anthropic has no embedding models, so search keeps
-using Ollama or an OpenAI-compatible embedding model.
+using Ollama, Nebius or an OpenAI-compatible embedding model.
 
 Keys are stored encrypted on your machine. With a cloud provider, each question and the GitHub and Slack text that
 matches it are sent to that provider.

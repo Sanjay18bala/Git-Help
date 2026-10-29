@@ -1,4 +1,4 @@
-// Chat and embedding providers (local Ollama, Anthropic, any OpenAI-compatible API) and their settings.
+// Chat and embedding providers (local Ollama, Nebius Token Factory, Anthropic, any OpenAI-compatible API) and their settings.
 // Settings live in the database; API keys are encrypted with SESSION_SECRET and never sent to the browser.
 import Anthropic from '@anthropic-ai/sdk';
 import { db } from './db.js';
@@ -6,12 +6,13 @@ import { seal, unseal } from './secrets.js';
 
 export class LlmError extends Error {}
 
-export const CHAT_PROVIDERS = ['ollama', 'anthropic', 'openai'];
-export const EMBED_PROVIDERS = ['ollama', 'openai'];
+export const CHAT_PROVIDERS = ['ollama', 'nebius', 'anthropic', 'openai'];
+export const EMBED_PROVIDERS = ['ollama', 'nebius', 'openai'];
 export const DEFAULT_MODELS = {
-  chat: { ollama: 'gemma3:4b', anthropic: 'claude-opus-5-5', openai: '' },
-  embed: { ollama: 'nomic-embed-text', openai: 'text-embedding-3-small' },
+  chat: { ollama: 'gemma3:4b', nebius: 'nvidia/nemotron-3-super-120b-a12b', anthropic: 'claude-opus-5-5', openai: '' },
+  embed: { ollama: 'nomic-embed-text', nebius: 'Qwen/Qwen3-Embedding-8B', openai: 'text-embedding-3-small' },
 };
+const NEBIUS_URL = 'https://api.tokenfactory.nebius.com/v1';
 const NUM_CTX = 12288; // Ollama's default context window is small and it silently truncates; rag.js budgets prompts to fit
 const ANSWER_EFFORT = 'medium';
 
@@ -31,6 +32,7 @@ export function settings() {
       url: s.openai?.url || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
       key: openKey(s.openai?.key) || process.env.OPENAI_API_KEY || '',
     },
+    nebius: { url: NEBIUS_URL, key: openKey(s.nebius?.key) || process.env.NEBIUS_API_KEY || '' },
     anthropic: { key: openKey(s.anthropic?.key) || process.env.ANTHROPIC_API_KEY || '' },
   };
 }
@@ -46,6 +48,7 @@ export function publicSettings() {
     embed: e.embed,
     ollama: e.ollama,
     openai: { url: e.openai.url, key: keyState(s.openai?.key, 'OPENAI_API_KEY') },
+    nebius: { key: keyState(s.nebius?.key, 'NEBIUS_API_KEY') },
     anthropic: { key: keyState(s.anthropic?.key, 'ANTHROPIC_API_KEY') },
     defaults: DEFAULT_MODELS,
   };
@@ -73,6 +76,7 @@ export function saveSettings(patch = {}) {
   if (patch.openai) {
     s.openai = { url: httpUrl(patch.openai.url, 'OpenAI-compatible base URL'), key: nextKey(patch.openai.key, s.openai?.key) };
   }
+  if (patch.nebius) s.nebius = { key: nextKey(patch.nebius.key, s.nebius?.key) };
   if (patch.anthropic) s.anthropic = { key: nextKey(patch.anthropic.key, s.anthropic?.key) };
   db().prepare("INSERT INTO settings VALUES ('llm', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value")
     .run(JSON.stringify(s));
@@ -152,36 +156,81 @@ const ollama = {
   },
 };
 
-const openaiHeaders = (s) => ({ ...JSON_HEADERS, ...(s.openai.key && { Authorization: `Bearer ${s.openai.key}` }) });
-
-// Any OpenAI-compatible API: OpenAI, Groq, OpenRouter, Together, LM Studio, vLLM, …
-const openai = {
-  async *chat({ model, system, messages, signal }, s) {
-    const res = await request(`${s.openai.url}/chat/completions`, {
-      method: 'POST',
-      signal,
-      headers: openaiHeaders(s),
-      body: JSON.stringify({ model, stream: true, messages: [{ role: 'system', content: system }, ...messages] }),
-    }, 'OpenAI-compatible API');
-    for await (const line of lines(res)) {
-      if (!line.startsWith('data:')) continue;
-      const data = line.slice(5).trim();
-      if (data === '[DONE]') return;
-      const delta = JSON.parse(data).choices?.[0]?.delta?.content;
-      if (delta) yield delta;
+// Reasoning models (Nemotron, DeepSeek-R1, …) put their thinking in <think>…</think> before the answer.
+// Drops it from a stream of text pieces, even when a tag is split across pieces.
+export async function* withoutThinking(pieces) {
+  let buf = '';
+  let thinking = false;
+  let trim = false; // whitespace right after </think> isn't part of the answer
+  for await (const p of pieces) {
+    buf += p;
+    if (trim) {
+      buf = buf.replace(/^\s+/, '');
+      trim = !buf;
     }
-  },
-  async embed(texts, model, s) {
-    const res = await request(`${s.openai.url}/embeddings`, {
-      method: 'POST', headers: openaiHeaders(s), body: JSON.stringify({ model, input: texts }),
-    }, 'OpenAI-compatible API');
-    return (await res.json()).data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
-  },
-  async models(s) {
-    const res = await request(`${s.openai.url}/models`, { headers: openaiHeaders(s) }, 'OpenAI-compatible API');
-    return (await res.json()).data.map((m) => m.id).sort();
-  },
+    for (;;) {
+      const tag = thinking ? '</think>' : '<think>';
+      const i = buf.indexOf(tag);
+      if (i >= 0) {
+        if (!thinking && buf.slice(0, i).trim()) yield buf.slice(0, i);
+        buf = buf.slice(i + tag.length);
+        if (thinking) {
+          buf = buf.replace(/^\s+/, '');
+          trim = !buf;
+        }
+        thinking = !thinking;
+        continue;
+      }
+      // Keep back a possible partial tag at the end.
+      let keep = 0;
+      for (let k = Math.min(tag.length - 1, buf.length); k > 0; k--) if (tag.startsWith(buf.slice(-k))) { keep = k; break; }
+      if (!thinking && buf.length > keep) yield buf.slice(0, buf.length - keep);
+      buf = buf.slice(buf.length - keep);
+      break;
+    }
+  }
+  if (!thinking && buf) yield buf;
+}
+
+// Any OpenAI-compatible API (OpenAI, Groq, OpenRouter, LM Studio, vLLM, …), reading url/key from settings[conf].
+// `extra` is merged into every chat request.
+const compatible = (conf, label, extra = {}) => {
+  const headers = (s) => ({ ...JSON_HEADERS, ...(s[conf].key && { Authorization: `Bearer ${s[conf].key}` }) });
+  return {
+    chat({ model, system, messages, signal }, s) {
+      return withoutThinking((async function* () {
+        const res = await request(`${s[conf].url}/chat/completions`, {
+          method: 'POST',
+          signal,
+          headers: headers(s),
+          body: JSON.stringify({ model, stream: true, ...extra, messages: [{ role: 'system', content: system }, ...messages] }),
+        }, label);
+        for await (const line of lines(res)) {
+          if (!line.startsWith('data:')) continue;
+          const data = line.slice(5).trim();
+          if (data === '[DONE]') return;
+          const delta = JSON.parse(data).choices?.[0]?.delta?.content; // reasoning_content, if sent separately, is ignored
+          if (delta) yield delta;
+        }
+      })());
+    },
+    async embed(texts, model, s) {
+      const res = await request(`${s[conf].url}/embeddings`, {
+        method: 'POST', headers: headers(s), body: JSON.stringify({ model, input: texts }),
+      }, label);
+      return (await res.json()).data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
+    },
+    async models(s) {
+      const res = await request(`${s[conf].url}/models`, { headers: headers(s) }, label);
+      return (await res.json()).data.map((m) => m.id).sort();
+    },
+  };
 };
+
+const openai = compatible('openai', 'OpenAI-compatible API');
+// Answers come from retrieved sources, so Nemotron's reasoning only adds latency: off, it routes 4-5x faster and
+// more accurately (with it on, nemotron-3-super called "how many open issues are there?" small talk).
+const nebius = compatible('nebius', 'Nebius Token Factory', { reasoning_effort: 'none' });
 
 // Models that support effort and server-side refusal fallbacks ("default" mode).
 const CURRENT_CLAUDE = new Set(['claude-fable-5-1', 'claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5-5']);
@@ -236,7 +285,7 @@ const anthropic = {
   },
 };
 
-const PROVIDERS = { ollama, openai, anthropic };
+const PROVIDERS = { ollama, nebius, openai, anthropic };
 
 // ---------- public API ----------
 

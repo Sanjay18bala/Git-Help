@@ -673,7 +673,9 @@ export async function* answer({ repo, messages, signal, mode = 'project' }) {
   const context = sources.length
     ? sources.map((c, i) => `<source id="${i + 1}" type="${c.source}" title="${attr(c.title)}">\n${quote(c.text)}\n</source>`).join('\n\n')
     : '(No indexed GitHub data or Slack messages matched.)';
-  const prompt = [...historyOf(messages), { role: 'user', content: `Sources:\n\n${context}\n\nQuestion: ${question}` }];
+  // Repeated next to the question: Nemotron answered correctly but dropped citations with only the system prompt's rule.
+  const cite = sources.length ? '\n\nCite the source after every sentence or list item, like [1].' : '';
+  const prompt = [...historyOf(messages), { role: 'user', content: `Sources:\n\n${context}\n\nQuestion: ${question}${cite}` }];
 
   for await (const text of chat({ system: systemPrompt(repo), messages: prompt, signal })) yield { type: 'token', text };
 }
