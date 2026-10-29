@@ -574,7 +574,7 @@ function AnswerText({ text, sources = [] }) {
     <p>
       {text.split(CITATION).map((part, i) => {
         const nums = citationNumbers(part);
-        if (!nums || !nums.every((n) => sources[n - 1])) return part;
+        if (!nums || !nums.every((n) => sources[n - 1])) return <Title key={i} text={part} />; // models write `code` despite "no Markdown"
         return (
           <span key={i} className="cites">
             {nums.map((n) => (
