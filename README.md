@@ -1,5 +1,8 @@
 # GitHelp
 
+**Runs on [NVIDIA Nemotron](https://www.nvidia.com/en-us/ai-data-science/foundation-models/nemotron/) through
+[Nebius Token Factory](https://tokenfactory.nebius.com).** Built for the Nebius x NVIDIA Global AI Hackathon 2026.
+
 **Your project already knows why.** GitHelp turns a repository's GitHub history and its Slack conversations into one
 searchable memory. Ask anything about the work, such as why a decision was made, what is blocking a release or why an
 issue is late, and get an answer built from the exact issues, reviews and messages, with a link to each.
@@ -12,8 +15,36 @@ daily or weekly digest posts what's late, and why, to the team's channel.
 
 Under the hood it is retrieval-augmented generation: issues, pull requests, reviews, comments, READMEs and linked Slack
 channels are indexed with both keyword and semantic search, the best matches are given to a language model, and the
-answer cites them. GitHelp is read-only on GitHub and runs on your own machine; by default the model runs locally
-through Ollama, so nothing leaves your computer.
+answer cites them. GitHelp is read-only on GitHub and runs on your own machine.
+
+## Powered by NVIDIA Nemotron on Nebius Token Factory
+
+Every answer in GitHelp goes through two model calls: a quick check of whether the message is about the project, then
+an answer written from the retrieved issues, reviews and Slack threads, with a citation for each claim. Both run on
+**`nvidia/nemotron-3-super-120b-a12b`**, served by **Nebius Token Factory**, and semantic search uses
+**`Qwen/Qwen3-Embedding-8B`** on the same platform.
+
+| | Nemotron 3 Super on Nebius |
+|---|---|
+| Routing a message (PROJECT or CHAT) | **~0.4–0.6 s** with reasoning off (down from ~2.3 s with it on) |
+| Answer quality, 19-question test set on demo data | **18 / 19** (the one miss is a test whose dates have since passed) |
+| Exact counts, overdue reasons, cited sources | All correct, each claim cited |
+| Setup | One API key, no GPU, no model downloads |
+
+Why this pairing works well for GitHelp:
+
+- **Nemotron follows instructions closely.** Every answer must come only from the given sources, cite them as [1],
+  [2], never move one issue's reason onto another, and take counts from an exact overview. Nemotron 3 Super does
+  all of this, and it routed questions correctly where a small local model and Nemotron with reasoning on both slipped.
+- **Reasoning can be switched off per request.** GitHelp's answers are grounded in retrieved text, so it sends
+  `reasoning_effort: "none"`. Routing gets 4–5× faster and more accurate, and answers start streaming in about 1–3 s.
+- **Token Factory is OpenAI-compatible.** It plugged into GitHelp's existing provider code with a base URL and a key,
+  serves Nemotron and an embedding model from one account, and streams tokens.
+- **Open models, hosted for you.** Nemotron's weights are open, so a team can keep the same model and move it in-house
+  later. In the meantime nothing has to be installed on the team's machines.
+
+Set it up in two minutes: [Nebius Token Factory (NVIDIA Nemotron)](#nebius-token-factory-nvidia-nemotron). A fully
+local setup with Ollama is also supported, for teams whose data can't leave their machines.
 
 ## Contents
 
@@ -21,7 +52,7 @@ through Ollama, so nothing leaves your computer.
 - [Set up](#set-up) (about 15 minutes)
 - [First run](#first-run)
 - [Running it all the time, for your team](#running-it-all-the-time-for-your-team)
-- [Using a cloud model instead of Ollama](#using-a-cloud-model-instead-of-ollama)
+- [Using NVIDIA Nemotron on Nebius, or another cloud model](#using-a-cloud-model-instead-of-ollama)
 - [Troubleshooting](#troubleshooting)
 - [Security and your data](#security-and-your-data)
 - [Development](#development)
@@ -31,9 +62,9 @@ through Ollama, so nothing leaves your computer.
 - **Node.js 22.13 or newer.** Check with `node -v`.
 - **A GitHub account** with access to the repositories you want to track.
 - **A Slack workspace where you can install an app.** Some workspaces need an admin to approve new apps.
-- **[Ollama](https://ollama.com)** to run the models locally (free), or a [Nebius Token Factory](https://tokenfactory.nebius.com),
-  Anthropic or OpenAI-compatible API key.
-  About 4 GB of disk for the default models.
+- **A model provider.** Recommended: a [Nebius Token Factory](https://tokenfactory.nebius.com) API key for NVIDIA
+  Nemotron (no GPU or downloads needed). Alternatively, [Ollama](https://ollama.com) to run models locally (about
+  4 GB of disk), or an Anthropic or OpenAI-compatible API key.
 
 ## Set up
 
@@ -101,17 +132,27 @@ and receives their replies.
 5. On **Basic Information**, scroll to **App-Level Tokens** → **Generate Token and Scopes**. Name it `socket`, add the
    `connections:write` scope, click **Generate**, and copy the token starting with `xapp-`. Leave token rotation off.
 
-### 4. Download the models
+### 4. Choose where the models run
 
-Install [Ollama](https://ollama.com) and start it. Then download a chat model and an embedding model:
+**Recommended: NVIDIA Nemotron on Nebius Token Factory.** Create an API key at
+[tokenfactory.nebius.com](https://tokenfactory.nebius.com) and add it to `.env` in the next step:
+
+```ini
+NEBIUS_API_KEY=...
+```
+
+That's all: with the key set, GitHelp uses `nvidia/nemotron-3-super-120b-a12b` for answers and
+`Qwen/Qwen3-Embedding-8B` for search. Nothing to install or download.
+
+**Fully local: Ollama.** For data that must not leave your machine, install [Ollama](https://ollama.com), start it,
+and download a chat model and an embedding model:
 
 ```bash
 ollama pull gemma3:4b
 ollama pull nomic-embed-text
 ```
 
-`gemma3:4b` needs about 3 GB of memory. With more, a larger model such as `qwen3:8b` gives better answers; you can
-switch models later in **Settings**.
+`gemma3:4b` needs about 3 GB of memory. You can switch providers and models at any time in **Settings**.
 
 ### 5. Fill in `.env`
 

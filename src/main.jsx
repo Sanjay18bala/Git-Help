@@ -916,7 +916,7 @@ const HELP = [
   ['Ask', [
     ['What can Ask answer?', 'Questions about the work: why something is late, when it will be done, what was decided and why, who is working on what, what is blocking a release, how many issues are open. Inside a repository it uses that repository’s issues, pull requests, reviews, comments, README, linked Slack channels and replies to the bot. On the other pages it uses everything indexed so far. Every answer links its sources.'],
     ['How do I open Ask?', 'Click Ask a question in the sidebar or press ⌘J (Ctrl+J on Windows and Linux). Press / anywhere outside a text field to jump to it. Buttons like Ask why it’s late ask for you.'],
-    ['Which model answers, and where does my data go?', 'By default a model running on this machine through Ollama, so nothing leaves it. In Settings you can choose Nebius Token Factory (NVIDIA Nemotron by default), Anthropic or any OpenAI-compatible service instead; then each question and the GitHub and Slack text that matches it are sent to that service.'],
+    ['Which model answers, and where does my data go?', 'NVIDIA Nemotron on Nebius Token Factory when a Nebius API key is set, otherwise a model running on this machine through Ollama, so nothing leaves it. In Settings you can switch between them, or choose Anthropic or any OpenAI-compatible service; then each question and the GitHub and Slack text that matches it are sent to that service.'],
     ['An answer is wrong or vague', 'Check the cited sources: answers come only from them. Small local models can make mistakes; a larger model (Settings → Chat model) gives better answers if your machine has the memory for it.'],
   ]],
   ['Using the app', [

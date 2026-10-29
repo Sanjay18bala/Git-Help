@@ -24,9 +24,10 @@ const openKey = (sealed) => (sealed && unseal(sealed)) || '';
 // Effective settings, keys decrypted. Server-side only.
 export function settings() {
   const s = stored();
+  const fallback = process.env.NEBIUS_API_KEY ? 'nebius' : 'ollama'; // until something is saved in Settings
   return {
-    chat: { provider: 'ollama', model: DEFAULT_MODELS.chat.ollama, ...s.chat },
-    embed: { provider: 'ollama', model: DEFAULT_MODELS.embed.ollama, ...s.embed },
+    chat: { provider: fallback, model: DEFAULT_MODELS.chat[fallback], ...s.chat },
+    embed: { provider: fallback, model: DEFAULT_MODELS.embed[fallback], ...s.embed },
     ollama: { url: s.ollama?.url || process.env.OLLAMA_URL || 'http://localhost:11434' },
     openai: {
       url: s.openai?.url || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
